@@ -1,43 +1,166 @@
 name: Build Module
 
+# 三端构建矩阵：
+#   android -> arm64-v8a / armeabi-v7a / x86_64（一个 zip 装三个 ABI）
+#   linux   -> x86_64-unknown-linux-gnu
+#   windows -> x86_64-pc-windows-msvc
+# 产物都是可直接导入 CPPlayer 的模块 zip。
+
 on:
   push:
     branches:
       - '**'
     tags:
       - '*'
+  pull_request:
+  workflow_dispatch:
 
 env:
   CARGO_TERM_COLOR: always
+  RUST_BACKTRACE: 1
 
 jobs:
-  build:
+  android:
+    name: Android (3 ABIs)
     runs-on: ubuntu-latest
-
     steps:
       - uses: actions/checkout@v4
 
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.x'
+
       - name: Install Rust toolchain
-        run: |
-          rustup toolchain install stable --profile minimal
-          rustup target add aarch64-linux-android
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: armv7-linux-androideabi,aarch64-linux-android,x86_64-linux-android
 
       - name: Install cargo-ndk
-        run: cargo install cargo-ndk
+        uses: taiki-e/install-action@v2
+        with:
+          tool: cargo-ndk
 
-      - name: Build and Package
+      - name: Setup Android NDK
+        uses: nttld/setup-ndk@v1
+        id: setup-ndk
+        with:
+          ndk-version: r27c
+          add-to-path: false
+
+      - name: Cache cargo
+        uses: Swatinem/rust-cache@v2
+        with:
+          key: android
+
+      - name: Build (arm64-v8a / armeabi-v7a / x86_64)
+        env:
+          ANDROID_NDK_HOME: ${{ steps.setup-ndk.outputs.ndk-path }}
+          # Android 15+ 要求 16KB page size 对齐
+          RUSTFLAGS: -Clink-arg=-Wl,-z,max-page-size=16384
+        run: cargo ndk -t arm64-v8a -t armeabi-v7a -t x86_64 -o ./target/jniLibs build --release --features jni,jni-android
+
+      - name: Package module
         run: |
-          chmod +x ./build_module.sh
-          ./build_module.sh
+          python scripts/package_module.py --platform android \
+            --lib arm64-v8a=target/jniLibs/arm64-v8a/libncm_api_rs.so \
+            --lib armeabi-v7a=target/jniLibs/armeabi-v7a/libncm_api_rs.so \
+            --lib x86_64=target/jniLibs/x86_64/libncm_api_rs.so
 
-      - name: Upload Artifact
+      - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
-          name: cp_rust_provider
-          path: ./target/cp_rust_provider.zip
+          name: ncm-api-rs-android
+          path: target/ncm-api-rs-android.zip
+          if-no-files-found: error
 
-      - name: Create Release
-        if: startsWith(github.ref, 'refs/tags/')
-        uses: softprops/action-gh-release@v1
+  linux:
+    name: Linux (x86_64)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
         with:
-          files: ./target/cp_rust_provider.zip
+          python-version: '3.x'
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache cargo
+        uses: Swatinem/rust-cache@v2
+        with:
+          key: linux-x86_64
+
+      - name: Build
+        run: cargo build --release --features jni --target x86_64-unknown-linux-gnu
+
+      - name: Package module
+        run: |
+          python scripts/package_module.py --platform linux \
+            --lib x86_64=target/x86_64-unknown-linux-gnu/release/libncm_api_rs.so
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ncm-api-rs-linux
+          path: target/ncm-api-rs-linux.zip
+          if-no-files-found: error
+
+  windows:
+    name: Windows (x86_64)
+    runs-on: windows-latest
+    defaults:
+      run:
+        # 用 pwsh 而非 bash：Git Bash 的 /usr/bin/link.exe 会顶掉 MSVC 的 link.exe，
+        # 导致 build script 链接失败（"link: extra operand"）。
+        shell: pwsh
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.x'
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Install NASM
+        # ring 在 x86_64-pc-windows-msvc 下需要 nasm 编译汇编
+        uses: ilammy/setup-nasm@v1
+
+      - name: Cache cargo
+        uses: Swatinem/rust-cache@v2
+        with:
+          key: windows-x86_64
+
+      - name: Build
+        run: cargo build --release --features jni --target x86_64-pc-windows-msvc
+
+      - name: Package module
+        run: python scripts/package_module.py --platform windows --lib x86_64=target/x86_64-pc-windows-msvc/release/ncm_api_rs.dll
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ncm-api-rs-windows
+          path: target/ncm-api-rs-windows.zip
+          if-no-files-found: error
+
+  release:
+    name: Release
+    if: startsWith(github.ref, 'refs/tags/')
+    needs: [android, linux, windows]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: dist
+          merge-multiple: true
+
+      - uses: softprops/action-gh-release@v2
+        with:
+          files: dist/*.zip
+          generate_release_notes: true

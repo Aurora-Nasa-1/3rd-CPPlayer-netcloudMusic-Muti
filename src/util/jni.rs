@@ -29,18 +29,31 @@ fn get_runtime() -> &'static Runtime {
     })
 }
 
+// ============================================================
+//  JNI 导出符号
+// ============================================================
+//
+// JNI 的符号名与宿主类的**全限定名**硬绑定：虚拟机按
+// `Java_<包名下划线化>_<类名>_<方法名>` 查找符号。宿主类当前是
+// `cp.cpplayer.core.provider.JniProvider`，因此导出前缀是
+// `Java_cp_cpplayer_core_provider_JniProvider_`。
+//
+// ⚠️ 宿主改包名后，用旧前缀编译的模块**仍能被 System.load() 成功加载**
+// （它是合法的 PE/ELF），但**首次方法调用**才抛 UnsatisfiedLinkError，
+// 症状是「模块显示已加载，一调用就崩」。所以宿主改包名，这里必须同步改。
+//
+// 历史沿革：cp.player.provider → cp.player.kmp.provider → cp.player.core.provider
+//          → cp.cpplayer.core.provider（当前）
+// 需要同时兼容旧宿主时，用 `--features legacy-jni-symbols` 把历史前缀一起导出。
+//
+// 下面三个 `_impl` 是真正的实现，导出符号只是薄转发层；
+// 宿主再改名时只需改文件末尾的 `export_jni!` 调用，不必碰实现。
+
 /// # Safety
 ///
-/// This function is called by the Android application via JNI.
-/// It starts the Rust server in a background thread.
-#[no_mangle]
+/// 启动 Rust 侧本地服务（由宿主通过 JNI 调用）。
 #[allow(unsafe_code)]
-pub unsafe extern "system" fn Java_cp_player_kmp_provider_JniProvider_startNativeServer(
-    mut env: JNIEnv,
-    _class: JClass,
-    host: JString,
-    port: i32,
-) {
+unsafe fn start_native_server_impl(mut env: JNIEnv, _class: JClass, host: JString, port: i32) {
     if SERVER_STARTED.swap(true, Ordering::SeqCst) {
         return;
     }
@@ -81,10 +94,9 @@ pub unsafe extern "system" fn Java_cp_player_kmp_provider_JniProvider_startNativ
 
 /// # Safety
 ///
-/// Direct API call via JNI.
-#[no_mangle]
+/// 直接经 JNI 调用 API（不经 HTTP 回环）。
 #[allow(unsafe_code)]
-pub unsafe extern "system" fn Java_cp_player_kmp_provider_JniProvider_nativeCallApi(
+unsafe fn native_call_api_impl(
     mut env: JNIEnv,
     _class: JClass,
     method: JString,
@@ -133,14 +145,9 @@ pub unsafe extern "system" fn Java_cp_player_kmp_provider_JniProvider_nativeCall
 
 /// # Safety
 ///
-/// Analyzes an audio file and returns its features as a JSON string.
-#[no_mangle]
+/// 分析音频文件，返回 JSON 形式的音频特征。
 #[allow(unsafe_code)]
-pub unsafe extern "system" fn Java_cp_player_kmp_provider_JniProvider_analyzeAudioFile(
-    mut env: JNIEnv,
-    _class: JClass,
-    path: JString,
-) -> jstring {
+unsafe fn analyze_audio_file_impl(mut env: JNIEnv, _class: JClass, path: JString) -> jstring {
     let path_str: String = match env.get_string(&path) {
         Ok(s) => s.into(),
         Err(_) => {
@@ -161,3 +168,81 @@ pub unsafe extern "system" fn Java_cp_player_kmp_provider_JniProvider_analyzeAud
 
     env.new_string(result).unwrap().into_raw()
 }
+
+/// 为一组宿主包名导出三个 JNI 符号（薄转发到 `_impl`）。
+///
+/// 参数顺序：startNativeServer / nativeCallApi / analyzeAudioFile 的完整符号名。
+macro_rules! export_jni {
+    ($start:ident, $call:ident, $analyze:ident) => {
+        /// # Safety
+        ///
+        /// JNI 导出：启动本地服务。
+        #[no_mangle]
+        #[allow(unsafe_code)]
+        pub unsafe extern "system" fn $start(
+            env: JNIEnv,
+            class: JClass,
+            host: JString,
+            port: i32,
+        ) {
+            start_native_server_impl(env, class, host, port)
+        }
+
+        /// # Safety
+        ///
+        /// JNI 导出：直接调用 API。
+        #[no_mangle]
+        #[allow(unsafe_code)]
+        pub unsafe extern "system" fn $call(
+            env: JNIEnv,
+            class: JClass,
+            method: JString,
+            params_json: JString,
+        ) -> jstring {
+            native_call_api_impl(env, class, method, params_json)
+        }
+
+        /// # Safety
+        ///
+        /// JNI 导出：音频分析。
+        #[no_mangle]
+        #[allow(unsafe_code)]
+        pub unsafe extern "system" fn $analyze(
+            env: JNIEnv,
+            class: JClass,
+            path: JString,
+        ) -> jstring {
+            analyze_audio_file_impl(env, class, path)
+        }
+    };
+}
+
+// 当前宿主：cp.cpplayer.core.provider.JniProvider
+export_jni!(
+    Java_cp_cpplayer_core_provider_JniProvider_startNativeServer,
+    Java_cp_cpplayer_core_provider_JniProvider_nativeCallApi,
+    Java_cp_cpplayer_core_provider_JniProvider_analyzeAudioFile
+);
+
+// 历史宿主前缀（默认不导出，用 `--features legacy-jni-symbols` 开启）。
+// 同一份二进制里多套符号互不冲突，旧版宿主也能直接加载。
+#[cfg(feature = "legacy-jni-symbols")]
+export_jni!(
+    Java_cp_player_core_provider_JniProvider_startNativeServer,
+    Java_cp_player_core_provider_JniProvider_nativeCallApi,
+    Java_cp_player_core_provider_JniProvider_analyzeAudioFile
+);
+
+#[cfg(feature = "legacy-jni-symbols")]
+export_jni!(
+    Java_cp_player_kmp_provider_JniProvider_startNativeServer,
+    Java_cp_player_kmp_provider_JniProvider_nativeCallApi,
+    Java_cp_player_kmp_provider_JniProvider_analyzeAudioFile
+);
+
+#[cfg(feature = "legacy-jni-symbols")]
+export_jni!(
+    Java_cp_player_provider_JniProvider_startNativeServer,
+    Java_cp_player_provider_JniProvider_nativeCallApi,
+    Java_cp_player_provider_JniProvider_analyzeAudioFile
+);

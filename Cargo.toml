@@ -1,6 +1,6 @@
 [package]
 name = "ncm-api-rs"
-version = "0.1.0"
+version = "0.2.0"
 edition = "2021"
 description = "Netease Cloud Music API Rust SDK"
 license = "WTFPL"
@@ -15,6 +15,10 @@ default = []
 server = ["axum", "tower", "tower-http", "tracing", "tracing-subscriber"]
 jni = ["dep:jni", "server"]
 jni-android = ["jni", "dep:tracing-android"]
+# 额外导出历史宿主包名的 JNI 符号（cp.player.core / cp.player.kmp / cp.player），
+# 让同一份二进制也能被旧版 CPPlayer 加载。默认只导出当前包名
+# cp.cpplayer.core.provider 的一组。
+legacy-jni-symbols = []
 
 [dependencies]
 # HTTP
