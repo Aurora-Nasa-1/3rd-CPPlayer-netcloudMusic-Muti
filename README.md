@@ -42,6 +42,19 @@ Java_cp_player_core_provider_JniProvider_analyzeAudioFile
   `link.exe`，在 bash 里构建会报 `link: extra operand`。
 - 三端打包统一由 `scripts/package_module.py` 完成（零依赖，标准库），shell 只负责调 cargo。
 
+## 发版（全自动版本号）
+
+tag 是版本的唯一真相源，**打 tag 即发版，不需要手动改 Cargo.toml**：
+
+```
+git tag v0.3.0 && git push origin v0.3.0
+```
+
+CI 会自动：把 Cargo.toml 同步成 tag 版本（`scripts/set_cargo_version.py`，
+在构建前做，二进制内嵌的 `CARGO_PKG_VERSION` 也跟随）→ 三端构建 →
+manifest.json 写入 tag 版本 → 产物命名 `ncm-api-rs-<平台>-<版本>.zip` →
+创建 GitHub Release 并上传三个 zip。
+
 也可直接调用打包脚本（例如只重新打包不重新编译）：
 
 ```bash
