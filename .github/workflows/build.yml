@@ -60,8 +60,15 @@ jobs:
         run: cargo ndk -t arm64-v8a -t armeabi-v7a -t x86_64 -o ./target/jniLibs build --release --features jni,jni-android
 
       - name: Package module
+        # tag 构建（v1.2.3）时以 tag 为准：manifest 用 tag 版本、zip 名带版本，
+        # 并校验 Cargo.toml 已同步（不一致直接 fail，防版本漂移）
         run: |
-          python scripts/package_module.py --platform android \
+          EXTRA=()
+          if [ "$GITHUB_REF_TYPE" = "tag" ]; then
+            V="${GITHUB_REF_NAME#v}"
+            EXTRA=(--expected-version "$V" --version "$V" --out "target/ncm-api-rs-android-$V.zip")
+          fi
+          python scripts/package_module.py --platform android "${EXTRA[@]}" \
             --lib arm64-v8a=target/jniLibs/arm64-v8a/libncm_api_rs.so \
             --lib armeabi-v7a=target/jniLibs/armeabi-v7a/libncm_api_rs.so \
             --lib x86_64=target/jniLibs/x86_64/libncm_api_rs.so
@@ -70,7 +77,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: ncm-api-rs-android
-          path: target/ncm-api-rs-android.zip
+          path: target/ncm-api-rs-*.zip
           if-no-files-found: error
 
   linux:
@@ -96,14 +103,19 @@ jobs:
 
       - name: Package module
         run: |
-          python scripts/package_module.py --platform linux \
+          EXTRA=()
+          if [ "$GITHUB_REF_TYPE" = "tag" ]; then
+            V="${GITHUB_REF_NAME#v}"
+            EXTRA=(--expected-version "$V" --version "$V" --out "target/ncm-api-rs-linux-$V.zip")
+          fi
+          python scripts/package_module.py --platform linux "${EXTRA[@]}" \
             --lib x86_64=target/x86_64-unknown-linux-gnu/release/libncm_api_rs.so
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
           name: ncm-api-rs-linux
-          path: target/ncm-api-rs-linux.zip
+          path: target/ncm-api-rs-*.zip
           if-no-files-found: error
 
   windows:
@@ -137,13 +149,21 @@ jobs:
         run: cargo build --release --features jni --target x86_64-pc-windows-msvc
 
       - name: Package module
-        run: python scripts/package_module.py --platform windows --lib x86_64=target/x86_64-pc-windows-msvc/release/ncm_api_rs.dll
+        # tag 时以 tag 为准（pwsh 语法，勿用 bash）
+        run: |
+          $extra = @()
+          if ($env:GITHUB_REF_TYPE -eq 'tag') {
+            $v = $env:GITHUB_REF_NAME -replace '^v', ''
+            $extra = @('--expected-version', $v, '--version', $v, '--out', "target/ncm-api-rs-windows-$v.zip")
+          }
+          python scripts/package_module.py --platform windows `
+            --lib x86_64=target/x86_64-pc-windows-msvc/release/ncm_api_rs.dll @extra
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
           name: ncm-api-rs-windows
-          path: target/ncm-api-rs-windows.zip
+          path: target/ncm-api-rs-*.zip
           if-no-files-found: error
 
   release:

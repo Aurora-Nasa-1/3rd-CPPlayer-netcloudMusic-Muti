@@ -103,6 +103,11 @@ def main() -> int:
     parser.add_argument("--name", default=DEFAULT_NAME, help="manifest 的 name")
     parser.add_argument("--version", default=None, help="manifest 版本，默认读 Cargo.toml")
     parser.add_argument(
+        "--expected-version",
+        default=None,
+        help="校验 Cargo.toml 的 version 与之一致（tag 构建时防版本漂移），不一致直接失败",
+    )
+    parser.add_argument(
         "--out",
         default=None,
         help="输出 zip 路径，默认 target/ncm-api-rs-<platform>.zip",
@@ -116,6 +121,16 @@ def main() -> int:
 
     root = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
     entries = parse_lib_args(args.lib)
+
+    # tag 构建时防版本漂移：tag（去掉 v 前缀）必须与 Cargo.toml 一致。
+    # 放在打包最前面，避免构建产物都齐了才发现版本对不上。
+    if args.expected_version:
+        crate = read_crate_version(root)
+        if crate != args.expected_version:
+            die(
+                f"版本漂移：期望 {args.expected_version}，但 Cargo.toml 的 version 是 {crate}。"
+                f"请把 Cargo.toml 的 version 改为 {args.expected_version} 并提交后重新打 tag。"
+            )
 
     # 同一个 zip 内所有 ABI 必须用同一个库文件名：manifest 只有一个 entryPoint
     lib_names = {os.path.basename(path) for _, path in entries}
