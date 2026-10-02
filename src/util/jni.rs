@@ -35,15 +35,16 @@ fn get_runtime() -> &'static Runtime {
 //
 // JNI 的符号名与宿主类的**全限定名**硬绑定：虚拟机按
 // `Java_<包名下划线化>_<类名>_<方法名>` 查找符号。宿主类当前是
-// `cp.cpplayer.core.provider.JniProvider`，因此导出前缀是
-// `Java_cp_cpplayer_core_provider_JniProvider_`。
+// `cp.player.core.provider.JniProvider`，因此导出前缀是
+// `Java_cp_player_core_provider_JniProvider_`。
 //
 // ⚠️ 宿主改包名后，用旧前缀编译的模块**仍能被 System.load() 成功加载**
 // （它是合法的 PE/ELF），但**首次方法调用**才抛 UnsatisfiedLinkError，
 // 症状是「模块显示已加载，一调用就崩」。所以宿主改包名，这里必须同步改。
+// 改包名前先到宿主仓库核实 JniProvider.kt 的真实 `package` 声明，
+// 不要凭记忆或仓库名猜测（曾把前缀错改成 cp.cpplayer.core.provider）。
 //
-// 历史沿革：cp.player.provider → cp.player.kmp.provider → cp.player.core.provider
-//          → cp.cpplayer.core.provider（当前）
+// 历史沿革：cp.player.provider → cp.player.kmp.provider → cp.player.core.provider（当前）
 // 需要同时兼容旧宿主时，用 `--features legacy-jni-symbols` 把历史前缀一起导出。
 //
 // 下面三个 `_impl` 是真正的实现，导出符号只是薄转发层；
@@ -217,20 +218,20 @@ macro_rules! export_jni {
     };
 }
 
-// 当前宿主：cp.cpplayer.core.provider.JniProvider
+// 当前宿主：cp.player.core.provider.JniProvider
 export_jni!(
-    Java_cp_cpplayer_core_provider_JniProvider_startNativeServer,
-    Java_cp_cpplayer_core_provider_JniProvider_nativeCallApi,
-    Java_cp_cpplayer_core_provider_JniProvider_analyzeAudioFile
+    Java_cp_player_core_provider_JniProvider_startNativeServer,
+    Java_cp_player_core_provider_JniProvider_nativeCallApi,
+    Java_cp_player_core_provider_JniProvider_analyzeAudioFile
 );
 
 // 历史宿主前缀（默认不导出，用 `--features legacy-jni-symbols` 开启）。
 // 同一份二进制里多套符号互不冲突，旧版宿主也能直接加载。
 #[cfg(feature = "legacy-jni-symbols")]
 export_jni!(
-    Java_cp_player_core_provider_JniProvider_startNativeServer,
-    Java_cp_player_core_provider_JniProvider_nativeCallApi,
-    Java_cp_player_core_provider_JniProvider_analyzeAudioFile
+    Java_cp_cpplayer_core_provider_JniProvider_startNativeServer,
+    Java_cp_cpplayer_core_provider_JniProvider_nativeCallApi,
+    Java_cp_cpplayer_core_provider_JniProvider_analyzeAudioFile
 );
 
 #[cfg(feature = "legacy-jni-symbols")]

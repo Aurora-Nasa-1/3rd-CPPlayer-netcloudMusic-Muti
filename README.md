@@ -10,19 +10,20 @@ JNI 的导出符号与宿主类的**全限定名**硬绑定：虚拟机按 `Java
 查找符号。本模块当前导出：
 
 ```
-Java_cp_cpplayer_core_provider_JniProvider_startNativeServer
-Java_cp_cpplayer_core_provider_JniProvider_nativeCallApi
-Java_cp_cpplayer_core_provider_JniProvider_analyzeAudioFile
+Java_cp_player_core_provider_JniProvider_startNativeServer
+Java_cp_player_core_provider_JniProvider_nativeCallApi
+Java_cp_player_core_provider_JniProvider_analyzeAudioFile
 ```
 
-对应宿主类 `cp.cpplayer.core.provider.JniProvider`。
+对应宿主类 `cp.player.core.provider.JniProvider`。
 
 > ⚠️ 用旧前缀编译的模块在新宿主上 **System.load() 仍能成功**，但首次方法调用会抛
 > `UnsatisfiedLinkError`（症状：「模块显示已加载，一调用就崩」）。宿主改包名后必须用
 > 新前缀重新编译，见 `src/util/jni.rs` 末尾的 `export_jni!` 调用。
 >
-> 历史沿革：`cp.player.provider` → `cp.player.kmp.provider` → `cp.player.core.provider`
-> → `cp.cpplayer.core.provider`（当前）。
+> 改包名前先到宿主仓库核实 `JniProvider.kt` 的真实 `package` 声明，不要凭仓库名猜测。
+>
+> 历史沿革：`cp.player.provider` → `cp.player.kmp.provider` → `cp.player.core.provider`（当前）。
 >
 > 需要一份二进制同时兼容旧宿主时，加 `--features legacy-jni-symbols`
 > （或 `./build_module.sh --legacy`）把历史前缀一起导出。
