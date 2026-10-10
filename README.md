@@ -79,6 +79,11 @@ ncm-api-rs-android.zip
 
 `manifest.json` 的 `version` 直接取自 `Cargo.toml`，不会与代码版本漂移。
 
+`manifest.json` 的 `apiMap` 是**能力声明**（唯一声明处：`scripts/package_module.py` 的
+`API_MAP`，三端共用）。宿主 `ProviderManager` 会把标了 `"unsupported"` 的方法**直接短路**成
+`{"code":-1}`、**不发请求**。当前声明 `msg/private/mark/read` 为 `unsupported` ——
+上游没有这个端点（2026-10-05 实测 404），不声明的话宿主每开一次私信会话都会拿到一个 500。
+
 ## CI
 
 `.github/workflows/build.yml` 在每次 push / PR 构建三端：

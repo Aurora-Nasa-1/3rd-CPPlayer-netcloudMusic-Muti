@@ -48,6 +48,21 @@ EXPECTED_SUFFIX = {
     "macos": ".dylib",
 }
 
+# manifest.json 的 apiMap —— **能力声明**，不是可选装饰。
+#
+# 宿主 `ProviderManager` 拿它做短路判断：标了 `"unsupported"` 的方法会被直接短路成
+# `{"code":-1}`，**根本不会发到本模块**。空 map = 「什么都支持」= 对不存在的能力撒谎。
+#
+# `msg/private/mark/read`：上游**没有**这个端点（2026-10-05 实测 404）。不声明的话，
+# 宿主每开一次私信会话都会拿到一个 500，把「诊断」页的整个音源拖成 ERROR。
+# 三条独立证据见 `src/api/msg_private_mark_read.rs` 的 KDoc。
+#
+# 三端（android / linux / windows / macos）共用这一份，所以只在这里声明一处 ——
+# 从前 shell 与 PowerShell 各写一份 manifest，改一处漏一处。
+API_MAP = {
+    "msg/private/mark/read": "unsupported",
+}
+
 
 def die(msg: str) -> "None":
     print(f"Error: {msg}", file=sys.stderr)
@@ -179,7 +194,7 @@ def main() -> int:
         "type": "jni",
         "entryPoint": entry_point,
         "supportedAbis": abis,
-        "apiMap": {},
+        "apiMap": dict(API_MAP),
     }
     manifest_path = os.path.join(staging, "manifest.json")
     # newline="" + encoding utf-8：不走平台默认编码，也不写 BOM
