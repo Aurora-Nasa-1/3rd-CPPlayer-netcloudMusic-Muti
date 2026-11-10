@@ -18,7 +18,7 @@ fn get_client() -> &'static ApiClient {
     API_CLIENT.get_or_init(|| ApiClient::new(None))
 }
 
-fn get_runtime() -> &'static Runtime {
+pub(crate) fn get_runtime() -> &'static Runtime {
     TOKIO_RUNTIME.get_or_init(|| {
         tokio::runtime::Builder::new_multi_thread()
             .enable_all()

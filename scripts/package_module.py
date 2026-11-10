@@ -192,8 +192,22 @@ def main() -> int:
         "name": args.name,
         "version": version,
         "type": "jni",
+        "contract": "kmp-sdk-v1",
         "entryPoint": entry_point,
         "supportedAbis": abis,
+        "sdkOrigins": [
+            "https://music.163.com",
+            "https://interface.music.163.com",
+            "https://interface3.music.163.com",
+        ],
+        "capabilities": [
+            "search",
+            "playback",
+            "lyricsSearch",
+            "userPlaylists",
+            "artistExplorer",
+            "albumExplorer",
+        ],
         "apiMap": dict(API_MAP),
     }
     manifest_path = os.path.join(staging, "manifest.json")

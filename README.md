@@ -4,11 +4,21 @@
 
 ---
 
-## 适配的宿主包名
+## 适配的宿主包名与 SDK 接口
 
-JNI 的导出符号与宿主类的**全限定名**硬绑定：虚拟机按 `Java_<包名下划线化>_<类名>_<方法名>`
-查找符号。本模块当前导出：
+### 1. 现代化 KMP SDK (`kmp-sdk-v1` 标准 Native Session)
+本模块纯 Rust 完整实现了 CPPlayer `kmp-sdk-v1` 契约，支持全部 161 项业务操作（包括曲库检索、解析、歌词、批量可用性、歌单、专辑、歌手、探索推荐、用户与账号会话、动态与社交、评论、一起听、MV与视频、DJ电台、云盘上传等）。
 
+JNI 符号（导出至 `src/sdk/jni_session.rs`）：
+```
+Java_cp_player_core_provider_netease_NeteaseJniSession_createNative
+Java_cp_player_core_provider_netease_NeteaseJniSession_invokeNative
+Java_cp_player_core_provider_netease_NeteaseJniSession_cancelNative
+Java_cp_player_core_provider_netease_NeteaseJniSession_closeNative
+```
+同时导出 `cp.player.sdk.netease.NeteaseJniSession` 对应符号供通用 SDK 接入。
+
+### 2. 传统 Legacy JNI 接口（兼容旧版）
 ```
 Java_cp_player_core_provider_JniProvider_startNativeServer
 Java_cp_player_core_provider_JniProvider_nativeCallApi

@@ -11,6 +11,7 @@ pub mod api;
 pub mod crypto;
 pub mod error;
 pub mod request;
+pub mod sdk;
 pub mod util;
 
 #[cfg(feature = "jni")]

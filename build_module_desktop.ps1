@@ -45,10 +45,32 @@ if (-not (Test-Path $Dll)) {
     throw "未找到产物 $Dll，请检查 cargo build 是否生成了 cdylib"
 }
 
-# 打包逻辑与 Linux/Android 共用 scripts/package_module.py（manifest 不带 BOM）
-python scripts/package_module.py --platform windows --lib "x86_64=$Dll"
-if ($LASTEXITCODE -ne 0) {
-    throw "打包失败，exit code $LASTEXITCODE"
+# 打包逻辑优先调用 scripts/package_module.py，若本地无可用 Python 则使用 PowerShell 原生打包
+$hasPython = (Get-Command python -ErrorAction SilentlyContinue) -and (& python -c "print('ok')" 2>$null) -eq "ok"
+if ($hasPython) {
+    python scripts/package_module.py --platform windows --lib "x86_64=$Dll"
+} else {
+    $staging = "target/cp_module/windows"
+    if (Test-Path $staging) { Remove-Item $staging -Recurse -Force }
+    $libDir = "$staging/lib/x86_64"
+    New-Item -ItemType Directory -Path $libDir -Force | Out-Null
+    Copy-Item $Dll "$libDir/ncm_api_rs.dll" -Force
+    $manifest = @{
+        id = "netease-cloudmusic-rs"
+        name = "NeteaseCloudMusicApi-RS"
+        version = "0.2.0"
+        type = "jni"
+        contract = "kmp-sdk-v1"
+        entryPoint = "ncm_api_rs.dll"
+        supportedAbis = @("x86_64")
+        sdkOrigins = @("https://music.163.com", "https://interface.music.163.com", "https://interface3.music.163.com")
+        capabilities = @("search", "playback", "lyricsSearch", "userPlaylists", "artistExplorer", "albumExplorer")
+        apiMap = @{ "msg/private/mark/read" = "unsupported" }
+    } | ConvertTo-Json -Depth 5
+    [System.IO.File]::WriteAllText("$staging/manifest.json", $manifest, (New-Object System.Text.UTF8Encoding($false)))
+    $outZip = "target/ncm-api-rs-windows.zip"
+    if (Test-Path $outZip) { Remove-Item $outZip -Force }
+    Compress-Archive -Path "$staging/*" -DestinationPath $outZip -Force
 }
 
 Write-Host ""
