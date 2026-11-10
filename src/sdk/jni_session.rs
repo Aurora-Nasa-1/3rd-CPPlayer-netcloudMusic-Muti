@@ -184,3 +184,48 @@ pub unsafe extern "system" fn Java_cp_player_sdk_netease_NeteaseJniSession_close
 ) {
     close_native_impl(handle);
 }
+
+// ------------------------------------------------------------
+// JNI Export Symbols for cp.player.sdk.jni.NativeSession (Host Standard)
+// ------------------------------------------------------------
+
+#[no_mangle]
+pub unsafe extern "system" fn Java_cp_player_sdk_jni_NativeSession_createNative(
+    mut env: JNIEnv,
+    _class: JClass,
+    provider_id: JString,
+    account_id: JString,
+    credential: JString,
+    settings: JString,
+) -> jlong {
+    create_native_impl(&mut env, provider_id, account_id, credential, settings)
+}
+
+#[no_mangle]
+pub unsafe extern "system" fn Java_cp_player_sdk_jni_NativeSession_invokeNative(
+    mut env: JNIEnv,
+    _class: JClass,
+    handle: jlong,
+    operation: jint,
+    request_bytes: JByteArray,
+) -> jbyteArray {
+    invoke_native_impl(&mut env, handle, operation, request_bytes)
+}
+
+#[no_mangle]
+pub unsafe extern "system" fn Java_cp_player_sdk_jni_NativeSession_cancelNative(
+    _env: JNIEnv,
+    _class: JClass,
+    handle: jlong,
+) {
+    cancel_native_impl(handle);
+}
+
+#[no_mangle]
+pub unsafe extern "system" fn Java_cp_player_sdk_jni_NativeSession_closeNative(
+    _env: JNIEnv,
+    _class: JClass,
+    handle: jlong,
+) {
+    close_native_impl(handle);
+}

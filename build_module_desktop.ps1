@@ -55,6 +55,7 @@ if ($hasPython) {
     $libDir = "$staging/lib/x86_64"
     New-Item -ItemType Directory -Path $libDir -Force | Out-Null
     Copy-Item $Dll "$libDir/ncm_api_rs.dll" -Force
+    Copy-Item $Dll "$staging/ncm_api_rs.dll" -Force
     $manifest = @{
         id = "netease-cloudmusic-rs"
         name = "NeteaseCloudMusicApi-RS"

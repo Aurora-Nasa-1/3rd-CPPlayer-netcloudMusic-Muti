@@ -186,6 +186,13 @@ def main() -> int:
             dst.write(src.read())
         print(f"  + lib/{abi}/{entry_point}  ({size} bytes)")
 
+        # 同时在根目录放置一份 entryPoint，适配宿主标准 DLL 直接加载路径
+        root_dest = os.path.join(staging, entry_point)
+        if not os.path.exists(root_dest):
+            with open(path, "rb") as src, open(root_dest, "wb") as dst:
+                dst.write(src.read())
+            print(f"  + {entry_point}  ({size} bytes)")
+
     version = args.version or read_crate_version(root)
     manifest = {
         "id": args.module_id,
