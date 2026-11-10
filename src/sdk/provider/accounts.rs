@@ -1,11 +1,17 @@
 //! User profiles, listening records, library likes, following, cloud library, and authentication.
 
-use super::parsers::{parse_album, parse_catalog_artist, parse_dj_radio, parse_playlist, parse_track, parse_user_profile, parse_video_item};
+use super::parsers::{
+    parse_album, parse_catalog_artist, parse_dj_radio, parse_playlist, parse_track,
+    parse_user_profile, parse_video_item,
+};
 use crate::api::Query;
 use crate::request::ApiClient;
 use crate::sdk::models::*;
 
-pub async fn get_user_profile(client: &ApiClient, req: UserRequest) -> Result<UserProfile, Failure> {
+pub async fn get_user_profile(
+    client: &ApiClient,
+    req: UserRequest,
+) -> Result<UserProfile, Failure> {
     let mut q = Query::new();
     q.params.insert("uid".to_string(), req.id.clone());
 
@@ -24,7 +30,10 @@ pub async fn get_user_profile(client: &ApiClient, req: UserRequest) -> Result<Us
     }
 }
 
-pub async fn get_user_records(client: &ApiClient, req: UserRecordsRequest) -> Result<TrackPage, Failure> {
+pub async fn get_user_records(
+    client: &ApiClient,
+    req: UserRecordsRequest,
+) -> Result<TrackPage, Failure> {
     let mut q = Query::new();
     q.params.insert("uid".to_string(), req.id);
     q.params.insert("type".to_string(), req.r#type.to_string());
@@ -50,11 +59,15 @@ pub async fn get_user_records(client: &ApiClient, req: UserRecordsRequest) -> Re
     })
 }
 
-pub async fn get_user_follows(client: &ApiClient, req: UserListRequest) -> Result<ArtistPage, Failure> {
+pub async fn get_user_follows(
+    client: &ApiClient,
+    req: UserListRequest,
+) -> Result<ArtistPage, Failure> {
     let mut q = Query::new();
     q.params.insert("uid".to_string(), req.id);
     q.params.insert("limit".to_string(), req.limit.to_string());
-    q.params.insert("offset".to_string(), req.offset.to_string());
+    q.params
+        .insert("offset".to_string(), req.offset.to_string());
 
     let res = client.user_follows(&q).await.map_err(|e| Failure {
         category: "Network".to_string(),
@@ -75,11 +88,15 @@ pub async fn get_user_follows(client: &ApiClient, req: UserListRequest) -> Resul
     })
 }
 
-pub async fn get_user_followeds(client: &ApiClient, req: UserListRequest) -> Result<ArtistPage, Failure> {
+pub async fn get_user_followeds(
+    client: &ApiClient,
+    req: UserListRequest,
+) -> Result<ArtistPage, Failure> {
     let mut q = Query::new();
     q.params.insert("uid".to_string(), req.id);
     q.params.insert("limit".to_string(), req.limit.to_string());
-    q.params.insert("offset".to_string(), req.offset.to_string());
+    q.params
+        .insert("offset".to_string(), req.offset.to_string());
 
     let res = client.user_followeds(&q).await.map_err(|e| Failure {
         category: "Network".to_string(),
@@ -100,10 +117,14 @@ pub async fn get_user_followeds(client: &ApiClient, req: UserListRequest) -> Res
     })
 }
 
-pub async fn get_user_cloud(client: &ApiClient, req: UserListRequest) -> Result<TrackPage, Failure> {
+pub async fn get_user_cloud(
+    client: &ApiClient,
+    req: UserListRequest,
+) -> Result<TrackPage, Failure> {
     let mut q = Query::new();
     q.params.insert("limit".to_string(), req.limit.to_string());
-    q.params.insert("offset".to_string(), req.offset.to_string());
+    q.params
+        .insert("offset".to_string(), req.offset.to_string());
 
     let res = client.user_cloud(&q).await.map_err(|e| Failure {
         category: "Network".to_string(),
@@ -112,7 +133,11 @@ pub async fn get_user_cloud(client: &ApiClient, req: UserListRequest) -> Result<
 
     let items = res.body["data"]
         .as_array()
-        .map(|arr| arr.iter().map(|item| parse_track(&item["simpleSong"])).collect())
+        .map(|arr| {
+            arr.iter()
+                .map(|item| parse_track(&item["simpleSong"]))
+                .collect()
+        })
         .unwrap_or_default();
 
     let has_more = res.body["hasMore"].as_bool();
@@ -136,17 +161,28 @@ pub async fn get_like_list(client: &ApiClient, req: UserRequest) -> Result<IdLis
 
     let items = res.body["ids"]
         .as_array()
-        .map(|arr| arr.iter().filter_map(|v| v.as_i64().map(|n| n.to_string())).collect())
+        .map(|arr| {
+            arr.iter()
+                .filter_map(|v| v.as_i64().map(|n| n.to_string()))
+                .collect()
+        })
         .unwrap_or_default();
 
     Ok(IdList { items })
 }
 
-pub async fn get_like_list_page(client: &ApiClient, req: PagedIdRequest) -> Result<IdPage, Failure> {
+pub async fn get_like_list_page(
+    client: &ApiClient,
+    req: PagedIdRequest,
+) -> Result<IdPage, Failure> {
     let all = get_like_list(client, UserRequest { id: req.id }).await?;
     let total = all.items.len();
     let offset = req.offset.max(0) as usize;
-    let limit = if req.limit <= 0 { 30 } else { req.limit as usize };
+    let limit = if req.limit <= 0 {
+        30
+    } else {
+        req.limit as usize
+    };
     let items = if offset >= total {
         vec![]
     } else {
@@ -161,10 +197,14 @@ pub async fn get_like_list_page(client: &ApiClient, req: PagedIdRequest) -> Resu
     })
 }
 
-pub async fn get_user_albums(client: &ApiClient, req: UserListRequest) -> Result<AlbumPage, Failure> {
+pub async fn get_user_albums(
+    client: &ApiClient,
+    req: UserListRequest,
+) -> Result<AlbumPage, Failure> {
     let mut q = Query::new();
     q.params.insert("limit".to_string(), req.limit.to_string());
-    q.params.insert("offset".to_string(), req.offset.to_string());
+    q.params
+        .insert("offset".to_string(), req.offset.to_string());
 
     let res = client.album_sublist(&q).await.map_err(|e| Failure {
         category: "Network".to_string(),
@@ -186,7 +226,10 @@ pub async fn get_user_albums(client: &ApiClient, req: UserListRequest) -> Result
     })
 }
 
-pub async fn get_current_account(client: &ApiClient, _req: Bytes) -> Result<AccountSession, Failure> {
+pub async fn get_current_account(
+    client: &ApiClient,
+    _req: Bytes,
+) -> Result<AccountSession, Failure> {
     let q = Query::new();
     let res = client.user_account(&q).await.map_err(|e| Failure {
         category: "Network".to_string(),
@@ -211,41 +254,70 @@ pub async fn get_current_account(client: &ApiClient, _req: Bytes) -> Result<Acco
     }
 }
 
-pub async fn authenticate(client: &ApiClient, req: AuthActionRequest) -> Result<AuthActionResult, Failure> {
-    match req.action.as_str() {
-        "qr_key" => {
+pub async fn authenticate(
+    client: &ApiClient,
+    req: AuthActionRequest,
+) -> Result<AuthActionResult, Failure> {
+    match req.action.to_ascii_lowercase().as_str() {
+        "qr.key" | "qr_key" | "qrkey" => {
             let q = Query::new();
             let res = client.login_qr_key(&q).await.map_err(|e| Failure {
                 category: "Authentication".to_string(),
                 message: e.to_string(),
             })?;
-            let key = res.body["data"]["unkey"].as_str().map(String::from);
+            let key = res.body["data"]["unkey"]
+                .as_str()
+                .or_else(|| res.body["unikey"].as_str())
+                .or_else(|| res.body["unkey"].as_str())
+                .or_else(|| res.body["data"].as_str())
+                .map(String::from);
+            let code = res.body["code"]
+                .as_i64()
+                .or_else(|| res.body["data"]["code"].as_i64())
+                .map(|n| n as i32);
+            let success = key.is_some();
             Ok(AuthActionResult {
-                success: key.is_some(),
+                success,
+                code,
+                status: code,
                 key,
+                message: res.body["message"].as_str().map(String::from),
                 ..Default::default()
             })
         }
-        "qr_create" => {
+        "qr.create" | "qr_create" | "qrcreate" => {
             let mut q = Query::new();
-            if let Some(k) = req.key {
-                q.params.insert("key".to_string(), k);
+            if let Some(k) = &req.key {
+                q.params.insert("key".to_string(), k.clone());
             }
             q.params.insert("qrimg".to_string(), "true".to_string());
             let res = client.login_qr_create(&q).await.map_err(|e| Failure {
                 category: "Authentication".to_string(),
                 message: e.to_string(),
             })?;
-            let img = res.body["data"]["qrimg"].as_str().map(String::from);
-            let url = res.body["data"]["qrurl"].as_str().map(String::from);
+            let url = res.body["data"]["qrurl"]
+                .as_str()
+                .map(String::from)
+                .or_else(|| {
+                    req.key
+                        .as_ref()
+                        .map(|k| format!("https://music.163.com/login?codekey={}", k))
+                });
+            let img = res.body["data"]["qrimg"]
+                .as_str()
+                .filter(|s| !s.is_empty())
+                .map(String::from);
+            let success = url.is_some() || img.is_some();
             Ok(AuthActionResult {
-                success: img.is_some(),
-                imageBase64: img,
+                success,
+                code: Some(200),
+                status: Some(200),
                 url,
+                imageBase64: img,
                 ..Default::default()
             })
         }
-        "qr_check" => {
+        "qr.check" | "qr_check" | "qrcheck" => {
             let mut q = Query::new();
             if let Some(k) = req.key {
                 q.params.insert("key".to_string(), k);
@@ -254,23 +326,40 @@ pub async fn authenticate(client: &ApiClient, req: AuthActionRequest) -> Result<
                 category: "Authentication".to_string(),
                 message: e.to_string(),
             })?;
-            let code = res.body["code"].as_i64();
-            let cookie = res.body["cookie"].as_str().map(String::from);
+            let code = res.body["code"]
+                .as_i64()
+                .or_else(|| res.body["status"].as_i64());
+            let cookie = res.body["cookie"]
+                .as_str()
+                .filter(|s| !s.is_empty())
+                .map(String::from)
+                .or_else(|| {
+                    if !res.cookie.is_empty() {
+                        Some(res.cookie.join("; "))
+                    } else {
+                        None
+                    }
+                });
+            let success = code == Some(803);
             Ok(AuthActionResult {
-                success: code == Some(803),
+                success,
                 code: code.map(|n| n as i32),
+                status: code.map(|n| n as i32),
                 cookie,
                 message: res.body["message"].as_str().map(String::from),
                 ..Default::default()
             })
         }
-        "cellphone" => {
+        "login.phone" | "login_phone" | "cellphone" | "phone" => {
             let mut q = Query::new();
             if let Some(phone) = req.phone {
                 q.params.insert("phone".to_string(), phone);
             }
             if let Some(pwd) = req.password {
-                q.params.insert(if req.md5 { "md5_password" } else { "password" }.to_string(), pwd);
+                q.params.insert(
+                    if req.md5 { "md5_password" } else { "password" }.to_string(),
+                    pwd,
+                );
             }
             if let Some(captcha) = req.captcha {
                 q.params.insert("captcha".to_string(), captcha);
@@ -280,10 +369,184 @@ pub async fn authenticate(client: &ApiClient, req: AuthActionRequest) -> Result<
                 message: e.to_string(),
             })?;
             let code = res.body["code"].as_i64();
-            let cookie = res.body["cookie"].as_str().map(String::from);
+            let cookie = res.body["cookie"]
+                .as_str()
+                .filter(|s| !s.is_empty())
+                .map(String::from)
+                .or_else(|| {
+                    if !res.cookie.is_empty() {
+                        Some(res.cookie.join("; "))
+                    } else {
+                        None
+                    }
+                });
+            let challenge = code == Some(250) || res.body["needVerify"].as_bool().unwrap_or(false);
+            let verify_url = res.body["verifyUrl"].as_str().map(String::from);
             Ok(AuthActionResult {
                 success: code == Some(200),
                 code: code.map(|n| n as i32),
+                status: code.map(|n| n as i32),
+                cookie,
+                challenge,
+                verifyUrl: verify_url,
+                message: res.body["message"]
+                    .as_str()
+                    .or_else(|| res.body["msg"].as_str())
+                    .map(String::from),
+                ..Default::default()
+            })
+        }
+        "login.email" | "login_email" | "email" => {
+            let mut q = Query::new();
+            if let Some(email) = req.email {
+                q.params.insert("email".to_string(), email);
+            }
+            if let Some(pwd) = req.password {
+                q.params.insert(
+                    if req.md5 { "md5_password" } else { "password" }.to_string(),
+                    pwd,
+                );
+            }
+            let res = client.login(&q).await.map_err(|e| Failure {
+                category: "Authentication".to_string(),
+                message: e.to_string(),
+            })?;
+            let code = res.body["code"].as_i64();
+            let cookie = res.body["cookie"]
+                .as_str()
+                .filter(|s| !s.is_empty())
+                .map(String::from)
+                .or_else(|| {
+                    if !res.cookie.is_empty() {
+                        Some(res.cookie.join("; "))
+                    } else {
+                        None
+                    }
+                });
+            Ok(AuthActionResult {
+                success: code == Some(200),
+                code: code.map(|n| n as i32),
+                status: code.map(|n| n as i32),
+                cookie,
+                message: res.body["message"]
+                    .as_str()
+                    .or_else(|| res.body["msg"].as_str())
+                    .map(String::from),
+                ..Default::default()
+            })
+        }
+        "captcha.send" | "captcha_send" | "captcha_sent" => {
+            let mut q = Query::new();
+            if let Some(phone) = req.phone {
+                q.params.insert("phone".to_string(), phone);
+            }
+            let res = client.captcha_sent(&q).await.map_err(|e| Failure {
+                category: "Authentication".to_string(),
+                message: e.to_string(),
+            })?;
+            let code = res.body["code"].as_i64();
+            Ok(AuthActionResult {
+                success: code == Some(200),
+                code: code.map(|n| n as i32),
+                status: code.map(|n| n as i32),
+                message: res.body["message"]
+                    .as_str()
+                    .or_else(|| res.body["msg"].as_str())
+                    .map(String::from),
+                ..Default::default()
+            })
+        }
+        "login.anonymous" | "login_anonymous" | "anonymous" => {
+            let q = Query::new();
+            let res = client.register_anonimous(&q).await.map_err(|e| Failure {
+                category: "Authentication".to_string(),
+                message: e.to_string(),
+            })?;
+            let code = res.body["code"].as_i64();
+            let cookie = res.body["cookie"]
+                .as_str()
+                .filter(|s| !s.is_empty())
+                .map(String::from)
+                .or_else(|| {
+                    if !res.cookie.is_empty() {
+                        Some(res.cookie.join("; "))
+                    } else {
+                        None
+                    }
+                });
+            Ok(AuthActionResult {
+                success: code == Some(200) || cookie.is_some(),
+                code: code.map(|n| n as i32),
+                status: code.map(|n| n as i32),
+                cookie,
+                message: res.body["message"]
+                    .as_str()
+                    .or_else(|| res.body["msg"].as_str())
+                    .map(String::from),
+                ..Default::default()
+            })
+        }
+        "logout" => {
+            let q = Query::new();
+            let res = client.logout(&q).await.map_err(|e| Failure {
+                category: "Authentication".to_string(),
+                message: e.to_string(),
+            })?;
+            let code = res.body["code"].as_i64();
+            Ok(AuthActionResult {
+                success: code == Some(200) || code.is_none(),
+                code: code.map(|n| n as i32),
+                status: code.map(|n| n as i32),
+                ..Default::default()
+            })
+        }
+        "verify.url" | "verify_url" => {
+            let mut q = Query::new();
+            if let Some(vid) = req.verifyId {
+                q.params.insert("verifyId".to_string(), vid);
+            }
+            let res = client.verify_get_qr(&q).await.map_err(|e| Failure {
+                category: "Authentication".to_string(),
+                message: e.to_string(),
+            })?;
+            let code = res.body["code"].as_i64();
+            let qr_code = res.body["data"]["qrCode"].as_str().map(String::from);
+            let qr_url = res.body["data"]["qrurl"].as_str().map(String::from);
+            Ok(AuthActionResult {
+                success: code == Some(200) || qr_url.is_some(),
+                code: code.map(|n| n as i32),
+                status: code.map(|n| n as i32),
+                key: qr_code,
+                url: qr_url,
+                message: res.body["message"].as_str().map(String::from),
+                ..Default::default()
+            })
+        }
+        "verify.check" | "verify_check" => {
+            let mut q = Query::new();
+            if let Some(k) = req.key {
+                q.params.insert("qr".to_string(), k);
+            }
+            let res = client.verify_qrcodestatus(&q).await.map_err(|e| Failure {
+                category: "Authentication".to_string(),
+                message: e.to_string(),
+            })?;
+            let code = res.body["code"].as_i64();
+            let cookie = res.body["cookie"]
+                .as_str()
+                .filter(|s| !s.is_empty())
+                .map(String::from)
+                .or_else(|| {
+                    if !res.cookie.is_empty() {
+                        Some(res.cookie.join("; "))
+                    } else {
+                        None
+                    }
+                });
+            Ok(AuthActionResult {
+                success: code == Some(200) || code == Some(803),
+                code: code.map(|n| n as i32),
+                status: code.map(|n| n as i32),
                 cookie,
                 message: res.body["message"].as_str().map(String::from),
                 ..Default::default()
@@ -296,7 +559,10 @@ pub async fn authenticate(client: &ApiClient, req: AuthActionRequest) -> Result<
     }
 }
 
-pub async fn update_user_profile(client: &ApiClient, req: UserProfileUpdateRequest) -> Result<MutationResult, Failure> {
+pub async fn update_user_profile(
+    client: &ApiClient,
+    req: UserProfileUpdateRequest,
+) -> Result<MutationResult, Failure> {
     let mut q = Query::new();
     if let Some(nick) = req.nickname {
         q.params.insert("nickname".to_string(), nick);
@@ -308,10 +574,12 @@ pub async fn update_user_profile(client: &ApiClient, req: UserProfileUpdateReque
         q.params.insert("gender".to_string(), gender.to_string());
     }
     if let Some(birthday) = req.birthdayEpochMs {
-        q.params.insert("birthday".to_string(), birthday.to_string());
+        q.params
+            .insert("birthday".to_string(), birthday.to_string());
     }
     if let Some(province) = req.province {
-        q.params.insert("province".to_string(), province.to_string());
+        q.params
+            .insert("province".to_string(), province.to_string());
     }
     if let Some(city) = req.city {
         q.params.insert("city".to_string(), city.to_string());
@@ -344,10 +612,16 @@ pub async fn daily_signin(client: &ApiClient, _req: Bytes) -> Result<SigninResul
     })
 }
 
-pub async fn follow_user(client: &ApiClient, req: FollowUserRequest) -> Result<MutationResult, Failure> {
+pub async fn follow_user(
+    client: &ApiClient,
+    req: FollowUserRequest,
+) -> Result<MutationResult, Failure> {
     let mut q = Query::new();
     q.params.insert("id".to_string(), req.id.clone());
-    q.params.insert("t".to_string(), if req.followed { "1" } else { "0" }.to_string());
+    q.params.insert(
+        "t".to_string(),
+        if req.followed { "1" } else { "0" }.to_string(),
+    );
 
     let res = client.follow(&q).await.map_err(|e| Failure {
         category: "Network".to_string(),
@@ -403,18 +677,28 @@ pub async fn get_recent_albums(client: &ApiClient, req: PageRequest) -> Result<A
     })
 }
 
-pub async fn get_recent_playlists(client: &ApiClient, req: PageRequest) -> Result<PlaylistPage, Failure> {
+pub async fn get_recent_playlists(
+    client: &ApiClient,
+    req: PageRequest,
+) -> Result<PlaylistPage, Failure> {
     let mut q = Query::new();
     q.params.insert("limit".to_string(), req.limit.to_string());
 
-    let res = client.record_recent_playlist(&q).await.map_err(|e| Failure {
-        category: "Network".to_string(),
-        message: e.to_string(),
-    })?;
+    let res = client
+        .record_recent_playlist(&q)
+        .await
+        .map_err(|e| Failure {
+            category: "Network".to_string(),
+            message: e.to_string(),
+        })?;
 
     let items = res.body["data"]["list"]
         .as_array()
-        .map(|arr| arr.iter().map(|item| parse_playlist(&item["data"])).collect())
+        .map(|arr| {
+            arr.iter()
+                .map(|item| parse_playlist(&item["data"]))
+                .collect()
+        })
         .unwrap_or_default();
 
     Ok(PlaylistPage {
@@ -435,7 +719,11 @@ pub async fn get_recent_videos(client: &ApiClient, req: PageRequest) -> Result<V
 
     let items = res.body["data"]["list"]
         .as_array()
-        .map(|arr| arr.iter().map(|item| parse_video_item(&item["data"])).collect())
+        .map(|arr| {
+            arr.iter()
+                .map(|item| parse_video_item(&item["data"]))
+                .collect()
+        })
         .unwrap_or_default();
 
     Ok(VideoPage {
@@ -445,7 +733,10 @@ pub async fn get_recent_videos(client: &ApiClient, req: PageRequest) -> Result<V
     })
 }
 
-pub async fn get_recent_dj_radios(client: &ApiClient, req: PageRequest) -> Result<DjRadioPage, Failure> {
+pub async fn get_recent_dj_radios(
+    client: &ApiClient,
+    req: PageRequest,
+) -> Result<DjRadioPage, Failure> {
     let mut q = Query::new();
     q.params.insert("limit".to_string(), req.limit.to_string());
 
@@ -456,7 +747,11 @@ pub async fn get_recent_dj_radios(client: &ApiClient, req: PageRequest) -> Resul
 
     let items = res.body["data"]["list"]
         .as_array()
-        .map(|arr| arr.iter().map(|item| parse_dj_radio(&item["data"])).collect())
+        .map(|arr| {
+            arr.iter()
+                .map(|item| parse_dj_radio(&item["data"]))
+                .collect()
+        })
         .unwrap_or_default();
 
     Ok(DjRadioPage {
@@ -466,7 +761,10 @@ pub async fn get_recent_dj_radios(client: &ApiClient, req: PageRequest) -> Resul
     })
 }
 
-pub async fn cloud_import(client: &ApiClient, req: CloudImportRequest) -> Result<MutationResult, Failure> {
+pub async fn cloud_import(
+    client: &ApiClient,
+    req: CloudImportRequest,
+) -> Result<MutationResult, Failure> {
     let mut q = Query::new();
     q.params.insert("songid".to_string(), req.id.clone());
     q.params.insert("adjustid".to_string(), req.matchId);
@@ -483,7 +781,10 @@ pub async fn cloud_import(client: &ApiClient, req: CloudImportRequest) -> Result
     })
 }
 
-pub async fn cloud_match(client: &ApiClient, req: CloudMatchRequest) -> Result<MutationResult, Failure> {
+pub async fn cloud_match(
+    client: &ApiClient,
+    req: CloudMatchRequest,
+) -> Result<MutationResult, Failure> {
     let mut q = Query::new();
     q.params.insert("userId".to_string(), req.userId);
     q.params.insert("songId".to_string(), req.id.clone());
@@ -501,7 +802,10 @@ pub async fn cloud_match(client: &ApiClient, req: CloudMatchRequest) -> Result<M
     })
 }
 
-pub async fn delete_user_cloud(client: &ApiClient, req: BatchRequest) -> Result<MutationResult, Failure> {
+pub async fn delete_user_cloud(
+    client: &ApiClient,
+    req: BatchRequest,
+) -> Result<MutationResult, Failure> {
     let mut q = Query::new();
     for (i, id) in req.ids.iter().enumerate() {
         q.params.insert(format!("songid[{}]", i), id.clone());
@@ -519,7 +823,10 @@ pub async fn delete_user_cloud(client: &ApiClient, req: BatchRequest) -> Result<
     })
 }
 
-pub async fn get_user_bindings(client: &ApiClient, req: UserRequest) -> Result<AccountBindingPage, Failure> {
+pub async fn get_user_bindings(
+    client: &ApiClient,
+    req: UserRequest,
+) -> Result<AccountBindingPage, Failure> {
     let mut q = Query::new();
     q.params.insert("uid".to_string(), req.id);
 
@@ -533,7 +840,10 @@ pub async fn get_user_bindings(client: &ApiClient, req: UserRequest) -> Result<A
         for b in arr {
             items.push(AccountBinding {
                 id: b["id"].as_i64().map(|n| n.to_string()).unwrap_or_default(),
-                r#type: b["type"].as_i64().map(|n| n.to_string()).unwrap_or_default(),
+                r#type: b["type"]
+                    .as_i64()
+                    .map(|n| n.to_string())
+                    .unwrap_or_default(),
                 name: None,
                 maskedAccount: None,
             });
@@ -543,16 +853,22 @@ pub async fn get_user_bindings(client: &ApiClient, req: UserRequest) -> Result<A
     Ok(AccountBindingPage { items })
 }
 
-pub async fn bind_phone(client: &ApiClient, req: PhoneBindingRequest) -> Result<MutationResult, Failure> {
+pub async fn bind_phone(
+    client: &ApiClient,
+    req: PhoneBindingRequest,
+) -> Result<MutationResult, Failure> {
     let mut q = Query::new();
     q.params.insert("cellphone".to_string(), req.phone);
     q.params.insert("countrycode".to_string(), req.countryCode);
     q.params.insert("captcha".to_string(), req.captcha);
 
-    let res = client.cellphone_existence_check(&q).await.map_err(|e| Failure {
-        category: "Network".to_string(),
-        message: e.to_string(),
-    })?;
+    let res = client
+        .cellphone_existence_check(&q)
+        .await
+        .map_err(|e| Failure {
+            category: "Network".to_string(),
+            message: e.to_string(),
+        })?;
 
     let code = res.body["code"].as_i64().unwrap_or(0);
     Ok(MutationResult {
@@ -561,7 +877,10 @@ pub async fn bind_phone(client: &ApiClient, req: PhoneBindingRequest) -> Result<
     })
 }
 
-pub async fn replace_phone(client: &ApiClient, req: PhoneReplacementRequest) -> Result<MutationResult, Failure> {
+pub async fn replace_phone(
+    client: &ApiClient,
+    req: PhoneReplacementRequest,
+) -> Result<MutationResult, Failure> {
     let mut q = Query::new();
     q.params.insert("phone".to_string(), req.phone);
     q.params.insert("countrycode".to_string(), req.countryCode);
@@ -580,7 +899,10 @@ pub async fn replace_phone(client: &ApiClient, req: PhoneReplacementRequest) -> 
     })
 }
 
-pub async fn like_song(client: &ApiClient, req: SongLikeRequest) -> Result<MutationResult, Failure> {
+pub async fn like_song(
+    client: &ApiClient,
+    req: SongLikeRequest,
+) -> Result<MutationResult, Failure> {
     let mut q = Query::new();
     q.params.insert("id".to_string(), req.id.clone());
     q.params.insert("like".to_string(), req.liked.to_string());

@@ -126,8 +126,8 @@ mod comment_like;
 mod comment_music;
 mod comment_mv;
 mod comment_new;
-mod comment_reply;
 mod comment_playlist;
+mod comment_reply;
 mod comment_video;
 
 // ---- 推荐相关 ----
@@ -403,9 +403,9 @@ mod voice_delete;
 mod voice_detail;
 mod voice_lyric;
 mod voicelist_detail;
-mod voicelist_my_created;
 mod voicelist_list;
 mod voicelist_list_search;
+mod voicelist_my_created;
 mod voicelist_search;
 mod voicelist_trans;
 

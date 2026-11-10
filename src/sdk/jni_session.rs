@@ -21,8 +21,14 @@ unsafe fn create_native_impl(
     credential: JString,
     settings: JString,
 ) -> jlong {
-    let pid: String = env.get_string(&provider_id).map(|s| s.into()).unwrap_or_else(|_| "netease".to_string());
-    let aid: String = env.get_string(&account_id).map(|s| s.into()).unwrap_or_else(|_| "default".to_string());
+    let pid: String = env
+        .get_string(&provider_id)
+        .map(|s| s.into())
+        .unwrap_or_else(|_| "netease".to_string());
+    let aid: String = env
+        .get_string(&account_id)
+        .map(|s| s.into())
+        .unwrap_or_else(|_| "default".to_string());
     let cred: Option<String> = if !credential.is_null() {
         env.get_string(&credential).ok().map(|s| s.into())
     } else {
@@ -56,9 +62,8 @@ unsafe fn invoke_native_impl(
 
     let provider = session.provider.clone();
     let rt = get_runtime();
-    let result: Result<Vec<u8>, Failure> = rt.block_on(async move {
-        provider.dispatch(operation as i32, &in_bytes).await
-    });
+    let result: Result<Vec<u8>, Failure> =
+        rt.block_on(async move { provider.dispatch(operation as i32, &in_bytes).await });
 
     let mut out: Vec<u8> = Vec::with_capacity(128);
     match result {

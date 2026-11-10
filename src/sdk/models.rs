@@ -291,9 +291,7 @@ impl IdRequest {
     }
 
     pub fn read(r: &mut WireReader) -> Result<Self, WireError> {
-        Ok(Self {
-            id: r.string()?,
-        })
+        Ok(Self { id: r.string()? })
     }
 }
 
@@ -406,9 +404,7 @@ impl Bytes {
     }
 
     pub fn read(r: &mut WireReader) -> Result<Self, WireError> {
-        Ok(Self {
-            value: r.bytes()?,
-        })
+        Ok(Self { value: r.bytes()? })
     }
 }
 
@@ -494,9 +490,7 @@ impl RecommendationsRequest {
     }
 
     pub fn read(r: &mut WireReader) -> Result<Self, WireError> {
-        Ok(Self {
-            limit: r.int()?,
-        })
+        Ok(Self { limit: r.int()? })
     }
 }
 
@@ -586,9 +580,7 @@ impl UserRequest {
     }
 
     pub fn read(r: &mut WireReader) -> Result<Self, WireError> {
-        Ok(Self {
-            id: r.string()?,
-        })
+        Ok(Self { id: r.string()? })
     }
 }
 
@@ -3251,7 +3243,9 @@ impl PlaylistUpdateRequest {
         w.string(&self.id);
         w.optional(self.name.as_deref(), |w, s| w.string(s));
         w.optional(self.description.as_deref(), |w, s| w.string(s));
-        w.optional(self.tags.as_deref(), |w, list| w.list(list, |w, s| w.string(s)));
+        w.optional(self.tags.as_deref(), |w, list| {
+            w.list(list, |w, s| w.string(s))
+        });
     }
 
     pub fn read(r: &mut WireReader) -> Result<Self, WireError> {
@@ -3448,9 +3442,7 @@ impl FollowCount {
     }
 
     pub fn read(r: &mut WireReader) -> Result<Self, WireError> {
-        Ok(Self {
-            count: r.long()?,
-        })
+        Ok(Self { count: r.long()? })
     }
 }
 
@@ -3486,9 +3478,7 @@ impl HistoryTracksRequest {
     }
 
     pub fn read(r: &mut WireReader) -> Result<Self, WireError> {
-        Ok(Self {
-            date: r.string()?,
-        })
+        Ok(Self { date: r.string()? })
     }
 }
 
@@ -4392,4 +4382,3 @@ impl ResourceMessageRequest {
         })
     }
 }
-

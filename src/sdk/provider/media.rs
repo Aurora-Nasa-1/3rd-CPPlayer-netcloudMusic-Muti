@@ -24,7 +24,10 @@ pub async fn get_mv(client: &ApiClient, req: IdRequest) -> Result<VideoItem, Fai
     }
 }
 
-pub async fn resolve_mv(client: &ApiClient, req: VideoResolveRequest) -> Result<MediaResource, Failure> {
+pub async fn resolve_mv(
+    client: &ApiClient,
+    req: VideoResolveRequest,
+) -> Result<MediaResource, Failure> {
     let mut q = Query::new();
     q.params.insert("id".to_string(), req.id.clone());
     q.params.insert("r".to_string(), req.resolution.to_string());
@@ -53,11 +56,15 @@ pub async fn resolve_mv(client: &ApiClient, req: VideoResolveRequest) -> Result<
     })
 }
 
-pub async fn get_all_mvs(client: &ApiClient, req: VideoBrowseRequest) -> Result<VideoPage, Failure> {
+pub async fn get_all_mvs(
+    client: &ApiClient,
+    req: VideoBrowseRequest,
+) -> Result<VideoPage, Failure> {
     let mut q = Query::new();
     q.params.insert("area".to_string(), req.area);
     q.params.insert("limit".to_string(), req.limit.to_string());
-    q.params.insert("offset".to_string(), req.offset.to_string());
+    q.params
+        .insert("offset".to_string(), req.offset.to_string());
 
     let res = client.mv_all(&q).await.map_err(|e| Failure {
         category: "Network".to_string(),
@@ -99,10 +106,16 @@ pub async fn get_latest_mvs(client: &ApiClient, req: PageRequest) -> Result<Vide
     })
 }
 
-pub async fn subscribe_mv(client: &ApiClient, req: SubscriptionRequest) -> Result<MutationResult, Failure> {
+pub async fn subscribe_mv(
+    client: &ApiClient,
+    req: SubscriptionRequest,
+) -> Result<MutationResult, Failure> {
     let mut q = Query::new();
     q.params.insert("mvid".to_string(), req.id.clone());
-    q.params.insert("t".to_string(), if req.subscribed { "1" } else { "0" }.to_string());
+    q.params.insert(
+        "t".to_string(),
+        if req.subscribed { "1" } else { "0" }.to_string(),
+    );
 
     let res = client.mv_sub(&q).await.map_err(|e| Failure {
         category: "Network".to_string(),
@@ -116,10 +129,14 @@ pub async fn subscribe_mv(client: &ApiClient, req: SubscriptionRequest) -> Resul
     })
 }
 
-pub async fn get_subscribed_mvs(client: &ApiClient, req: PageRequest) -> Result<VideoPage, Failure> {
+pub async fn get_subscribed_mvs(
+    client: &ApiClient,
+    req: PageRequest,
+) -> Result<VideoPage, Failure> {
     let mut q = Query::new();
     q.params.insert("limit".to_string(), req.limit.to_string());
-    q.params.insert("offset".to_string(), req.offset.to_string());
+    q.params
+        .insert("offset".to_string(), req.offset.to_string());
 
     let res = client.mv_sublist(&q).await.map_err(|e| Failure {
         category: "Network".to_string(),
@@ -159,7 +176,10 @@ pub async fn get_video(client: &ApiClient, req: IdRequest) -> Result<VideoItem, 
     }
 }
 
-pub async fn resolve_video(client: &ApiClient, req: VideoResolveRequest) -> Result<MediaResource, Failure> {
+pub async fn resolve_video(
+    client: &ApiClient,
+    req: VideoResolveRequest,
+) -> Result<MediaResource, Failure> {
     let mut q = Query::new();
     q.params.insert("id".to_string(), req.id.clone());
     q.params.insert("r".to_string(), req.resolution.to_string());
@@ -169,7 +189,10 @@ pub async fn resolve_video(client: &ApiClient, req: VideoResolveRequest) -> Resu
         message: e.to_string(),
     })?;
 
-    let url = res.body["urls"][0]["url"].as_str().unwrap_or("").to_string();
+    let url = res.body["urls"][0]["url"]
+        .as_str()
+        .unwrap_or("")
+        .to_string();
     if url.is_empty() {
         return Err(Failure {
             category: "NotFound".to_string(),
@@ -208,9 +231,13 @@ pub async fn get_video_groups(client: &ApiClient, _req: Bytes) -> Result<Categor
     Ok(CategoryPage { items })
 }
 
-pub async fn get_video_timeline(client: &ApiClient, req: PageRequest) -> Result<VideoPage, Failure> {
+pub async fn get_video_timeline(
+    client: &ApiClient,
+    req: PageRequest,
+) -> Result<VideoPage, Failure> {
     let mut q = Query::new();
-    q.params.insert("offset".to_string(), req.offset.to_string());
+    q.params
+        .insert("offset".to_string(), req.offset.to_string());
 
     let res = client.video_timeline_all(&q).await.map_err(|e| Failure {
         category: "Network".to_string(),
@@ -219,7 +246,11 @@ pub async fn get_video_timeline(client: &ApiClient, req: PageRequest) -> Result<
 
     let items = res.body["datas"]
         .as_array()
-        .map(|arr| arr.iter().map(|item| parse_video_item(&item["data"])).collect())
+        .map(|arr| {
+            arr.iter()
+                .map(|item| parse_video_item(&item["data"]))
+                .collect()
+        })
         .unwrap_or_default();
 
     let has_more = res.body["hasmore"].as_bool();
@@ -236,7 +267,8 @@ pub async fn search_mvs(client: &ApiClient, req: SearchRequest) -> Result<VideoP
     q.params.insert("keywords".to_string(), req.keyword);
     q.params.insert("type".to_string(), "1004".to_string());
     q.params.insert("limit".to_string(), req.limit.to_string());
-    q.params.insert("offset".to_string(), req.offset.to_string());
+    q.params
+        .insert("offset".to_string(), req.offset.to_string());
 
     let res = client.cloudsearch(&q).await.map_err(|e| Failure {
         category: "Network".to_string(),
@@ -262,7 +294,8 @@ pub async fn search_videos(client: &ApiClient, req: SearchRequest) -> Result<Vid
     q.params.insert("keywords".to_string(), req.keyword);
     q.params.insert("type".to_string(), "1014".to_string());
     q.params.insert("limit".to_string(), req.limit.to_string());
-    q.params.insert("offset".to_string(), req.offset.to_string());
+    q.params
+        .insert("offset".to_string(), req.offset.to_string());
 
     let res = client.cloudsearch(&q).await.map_err(|e| Failure {
         category: "Network".to_string(),
@@ -283,7 +316,10 @@ pub async fn search_videos(client: &ApiClient, req: SearchRequest) -> Result<Vid
     })
 }
 
-pub async fn get_video_categories(client: &ApiClient, _req: Bytes) -> Result<CategoryPage, Failure> {
+pub async fn get_video_categories(
+    client: &ApiClient,
+    _req: Bytes,
+) -> Result<CategoryPage, Failure> {
     let q = Query::new();
     let res = client.video_category_list(&q).await.map_err(|e| Failure {
         category: "Network".to_string(),
@@ -303,10 +339,14 @@ pub async fn get_video_categories(client: &ApiClient, _req: Bytes) -> Result<Cat
     Ok(CategoryPage { items })
 }
 
-pub async fn get_videos_by_group(client: &ApiClient, req: PagedIdRequest) -> Result<VideoPage, Failure> {
+pub async fn get_videos_by_group(
+    client: &ApiClient,
+    req: PagedIdRequest,
+) -> Result<VideoPage, Failure> {
     let mut q = Query::new();
     q.params.insert("groupId".to_string(), req.id);
-    q.params.insert("offset".to_string(), req.offset.to_string());
+    q.params
+        .insert("offset".to_string(), req.offset.to_string());
 
     let res = client.video_group(&q).await.map_err(|e| Failure {
         category: "Network".to_string(),
@@ -315,7 +355,11 @@ pub async fn get_videos_by_group(client: &ApiClient, req: PagedIdRequest) -> Res
 
     let items = res.body["datas"]
         .as_array()
-        .map(|arr| arr.iter().map(|item| parse_video_item(&item["data"])).collect())
+        .map(|arr| {
+            arr.iter()
+                .map(|item| parse_video_item(&item["data"]))
+                .collect()
+        })
         .unwrap_or_default();
 
     let has_more = res.body["hasmore"].as_bool();
@@ -327,18 +371,29 @@ pub async fn get_videos_by_group(client: &ApiClient, req: PagedIdRequest) -> Res
     })
 }
 
-pub async fn get_recommended_video_timeline(client: &ApiClient, req: PageRequest) -> Result<VideoPage, Failure> {
+pub async fn get_recommended_video_timeline(
+    client: &ApiClient,
+    req: PageRequest,
+) -> Result<VideoPage, Failure> {
     let mut q = Query::new();
-    q.params.insert("offset".to_string(), req.offset.to_string());
+    q.params
+        .insert("offset".to_string(), req.offset.to_string());
 
-    let res = client.video_timeline_recommend(&q).await.map_err(|e| Failure {
-        category: "Network".to_string(),
-        message: e.to_string(),
-    })?;
+    let res = client
+        .video_timeline_recommend(&q)
+        .await
+        .map_err(|e| Failure {
+            category: "Network".to_string(),
+            message: e.to_string(),
+        })?;
 
     let items = res.body["datas"]
         .as_array()
-        .map(|arr| arr.iter().map(|item| parse_video_item(&item["data"])).collect())
+        .map(|arr| {
+            arr.iter()
+                .map(|item| parse_video_item(&item["data"]))
+                .collect()
+        })
         .unwrap_or_default();
 
     let has_more = res.body["hasmore"].as_bool();
@@ -350,10 +405,16 @@ pub async fn get_recommended_video_timeline(client: &ApiClient, req: PageRequest
     })
 }
 
-pub async fn subscribe_video(client: &ApiClient, req: SubscriptionRequest) -> Result<MutationResult, Failure> {
+pub async fn subscribe_video(
+    client: &ApiClient,
+    req: SubscriptionRequest,
+) -> Result<MutationResult, Failure> {
     let mut q = Query::new();
     q.params.insert("id".to_string(), req.id.clone());
-    q.params.insert("t".to_string(), if req.subscribed { "1" } else { "0" }.to_string());
+    q.params.insert(
+        "t".to_string(),
+        if req.subscribed { "1" } else { "0" }.to_string(),
+    );
 
     let res = client.video_sub(&q).await.map_err(|e| Failure {
         category: "Network".to_string(),
@@ -371,7 +432,8 @@ pub async fn get_artist_mvs(client: &ApiClient, req: PagedIdRequest) -> Result<V
     let mut q = Query::new();
     q.params.insert("id".to_string(), req.id);
     q.params.insert("limit".to_string(), req.limit.to_string());
-    q.params.insert("offset".to_string(), req.offset.to_string());
+    q.params
+        .insert("offset".to_string(), req.offset.to_string());
 
     let res = client.artist_mv(&q).await.map_err(|e| Failure {
         category: "Network".to_string(),
@@ -412,12 +474,17 @@ pub async fn get_dj_radio(client: &ApiClient, req: IdRequest) -> Result<DjRadio,
     }
 }
 
-pub async fn get_dj_programs(client: &ApiClient, req: DjProgramsRequest) -> Result<DjProgramPage, Failure> {
+pub async fn get_dj_programs(
+    client: &ApiClient,
+    req: DjProgramsRequest,
+) -> Result<DjProgramPage, Failure> {
     let mut q = Query::new();
     q.params.insert("rid".to_string(), req.id);
     q.params.insert("limit".to_string(), req.limit.to_string());
-    q.params.insert("offset".to_string(), req.offset.to_string());
-    q.params.insert("asc".to_string(), req.ascending.to_string());
+    q.params
+        .insert("offset".to_string(), req.offset.to_string());
+    q.params
+        .insert("asc".to_string(), req.ascending.to_string());
 
     let res = client.dj_program(&q).await.map_err(|e| Failure {
         category: "Network".to_string(),
@@ -439,10 +506,14 @@ pub async fn get_dj_programs(client: &ApiClient, req: DjProgramsRequest) -> Resu
     })
 }
 
-pub async fn get_hot_dj_radios(client: &ApiClient, req: PageRequest) -> Result<DjRadioPage, Failure> {
+pub async fn get_hot_dj_radios(
+    client: &ApiClient,
+    req: PageRequest,
+) -> Result<DjRadioPage, Failure> {
     let mut q = Query::new();
     q.params.insert("limit".to_string(), req.limit.to_string());
-    q.params.insert("offset".to_string(), req.offset.to_string());
+    q.params
+        .insert("offset".to_string(), req.offset.to_string());
 
     let res = client.dj_hot(&q).await.map_err(|e| Failure {
         category: "Network".to_string(),
@@ -467,7 +538,8 @@ pub async fn get_hot_dj_radios(client: &ApiClient, req: PageRequest) -> Result<D
 pub async fn get_dj_ranking(client: &ApiClient, req: PageRequest) -> Result<DjRadioPage, Failure> {
     let mut q = Query::new();
     q.params.insert("limit".to_string(), req.limit.to_string());
-    q.params.insert("offset".to_string(), req.offset.to_string());
+    q.params
+        .insert("offset".to_string(), req.offset.to_string());
 
     let res = client.dj_program_toplist(&q).await.map_err(|e| Failure {
         category: "Network".to_string(),
@@ -476,7 +548,11 @@ pub async fn get_dj_ranking(client: &ApiClient, req: PageRequest) -> Result<DjRa
 
     let items = res.body["toplist"]
         .as_array()
-        .map(|arr| arr.iter().map(|item| parse_dj_radio(&item["program"]["dj"])).collect())
+        .map(|arr| {
+            arr.iter()
+                .map(|item| parse_dj_radio(&item["program"]["dj"]))
+                .collect()
+        })
         .unwrap_or_default();
 
     Ok(DjRadioPage {
@@ -486,12 +562,18 @@ pub async fn get_dj_ranking(client: &ApiClient, req: PageRequest) -> Result<DjRa
     })
 }
 
-pub async fn get_recommended_dj_radios(client: &ApiClient, _req: PageRequest) -> Result<DjRadioPage, Failure> {
+pub async fn get_recommended_dj_radios(
+    client: &ApiClient,
+    _req: PageRequest,
+) -> Result<DjRadioPage, Failure> {
     let q = Query::new();
-    let res = client.dj_personalize_recommend(&q).await.map_err(|e| Failure {
-        category: "Network".to_string(),
-        message: e.to_string(),
-    })?;
+    let res = client
+        .dj_personalize_recommend(&q)
+        .await
+        .map_err(|e| Failure {
+            category: "Network".to_string(),
+            message: e.to_string(),
+        })?;
 
     let items = res.body["data"]
         .as_array()
@@ -505,10 +587,16 @@ pub async fn get_recommended_dj_radios(client: &ApiClient, _req: PageRequest) ->
     })
 }
 
-pub async fn subscribe_dj_radio(client: &ApiClient, req: SubscriptionRequest) -> Result<MutationResult, Failure> {
+pub async fn subscribe_dj_radio(
+    client: &ApiClient,
+    req: SubscriptionRequest,
+) -> Result<MutationResult, Failure> {
     let mut q = Query::new();
     q.params.insert("id".to_string(), req.id.clone());
-    q.params.insert("t".to_string(), if req.subscribed { "1" } else { "0" }.to_string());
+    q.params.insert(
+        "t".to_string(),
+        if req.subscribed { "1" } else { "0" }.to_string(),
+    );
 
     let res = client.dj_sub(&q).await.map_err(|e| Failure {
         category: "Network".to_string(),
@@ -522,10 +610,14 @@ pub async fn subscribe_dj_radio(client: &ApiClient, req: SubscriptionRequest) ->
     })
 }
 
-pub async fn get_subscribed_dj_radios(client: &ApiClient, req: PageRequest) -> Result<DjRadioPage, Failure> {
+pub async fn get_subscribed_dj_radios(
+    client: &ApiClient,
+    req: PageRequest,
+) -> Result<DjRadioPage, Failure> {
     let mut q = Query::new();
     q.params.insert("limit".to_string(), req.limit.to_string());
-    q.params.insert("offset".to_string(), req.offset.to_string());
+    q.params
+        .insert("offset".to_string(), req.offset.to_string());
 
     let res = client.dj_sublist(&q).await.map_err(|e| Failure {
         category: "Network".to_string(),
@@ -547,7 +639,10 @@ pub async fn get_subscribed_dj_radios(client: &ApiClient, req: PageRequest) -> R
     })
 }
 
-pub async fn get_recommended_programs(client: &ApiClient, _req: PageRequest) -> Result<DjProgramPage, Failure> {
+pub async fn get_recommended_programs(
+    client: &ApiClient,
+    _req: PageRequest,
+) -> Result<DjProgramPage, Failure> {
     let q = Query::new();
     let res = client.dj_recommend(&q).await.map_err(|e| Failure {
         category: "Network".to_string(),
@@ -585,19 +680,30 @@ pub async fn get_dj_program(client: &ApiClient, req: IdRequest) -> Result<DjProg
     }
 }
 
-pub async fn get_user_dj_radios(client: &ApiClient, req: PagedIdRequest) -> Result<DjRadioPage, Failure> {
-    get_subscribed_dj_radios(client, PageRequest {
-        limit: req.limit,
-        offset: req.offset,
-    }).await
+pub async fn get_user_dj_radios(
+    client: &ApiClient,
+    req: PagedIdRequest,
+) -> Result<DjRadioPage, Failure> {
+    get_subscribed_dj_radios(
+        client,
+        PageRequest {
+            limit: req.limit,
+            offset: req.offset,
+        },
+    )
+    .await
 }
 
-pub async fn search_dj_radios(client: &ApiClient, req: SearchRequest) -> Result<DjRadioPage, Failure> {
+pub async fn search_dj_radios(
+    client: &ApiClient,
+    req: SearchRequest,
+) -> Result<DjRadioPage, Failure> {
     let mut q = Query::new();
     q.params.insert("keywords".to_string(), req.keyword);
     q.params.insert("type".to_string(), "1009".to_string());
     q.params.insert("limit".to_string(), req.limit.to_string());
-    q.params.insert("offset".to_string(), req.offset.to_string());
+    q.params
+        .insert("offset".to_string(), req.offset.to_string());
 
     let res = client.cloudsearch(&q).await.map_err(|e| Failure {
         category: "Network".to_string(),
@@ -638,7 +744,10 @@ pub async fn get_dj_categories(client: &ApiClient, _req: Bytes) -> Result<Catego
     Ok(CategoryPage { items })
 }
 
-pub async fn get_dj_radios_by_category(client: &ApiClient, req: PagedIdRequest) -> Result<DjRadioPage, Failure> {
+pub async fn get_dj_radios_by_category(
+    client: &ApiClient,
+    req: PagedIdRequest,
+) -> Result<DjRadioPage, Failure> {
     let mut q = Query::new();
     q.params.insert("type".to_string(), req.id);
 
@@ -659,11 +768,15 @@ pub async fn get_dj_radios_by_category(client: &ApiClient, req: PagedIdRequest) 
     })
 }
 
-pub async fn get_dj_radio_subscribers(client: &ApiClient, req: PagedIdRequest) -> Result<SocialUserPage, Failure> {
+pub async fn get_dj_radio_subscribers(
+    client: &ApiClient,
+    req: PagedIdRequest,
+) -> Result<SocialUserPage, Failure> {
     let mut q = Query::new();
     q.params.insert("id".to_string(), req.id);
     q.params.insert("limit".to_string(), req.limit.to_string());
-    q.params.insert("offset".to_string(), req.offset.to_string());
+    q.params
+        .insert("offset".to_string(), req.offset.to_string());
 
     let res = client.dj_subscriber(&q).await.map_err(|e| Failure {
         category: "Network".to_string(),
@@ -684,11 +797,15 @@ pub async fn get_dj_radio_subscribers(client: &ApiClient, req: PagedIdRequest) -
     })
 }
 
-pub async fn browse_dj_ranking(client: &ApiClient, req: DjRankingRequest) -> Result<DjRadioPage, Failure> {
+pub async fn browse_dj_ranking(
+    client: &ApiClient,
+    req: DjRankingRequest,
+) -> Result<DjRadioPage, Failure> {
     let mut q = Query::new();
     q.params.insert("type".to_string(), req.kind);
     q.params.insert("limit".to_string(), req.limit.to_string());
-    q.params.insert("offset".to_string(), req.offset.to_string());
+    q.params
+        .insert("offset".to_string(), req.offset.to_string());
 
     let res = client.dj_radio_top(&q).await.map_err(|e| Failure {
         category: "Network".to_string(),

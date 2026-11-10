@@ -10,7 +10,8 @@ pub async fn search_artists(client: &ApiClient, req: SearchRequest) -> Result<Ar
     q.params.insert("keywords".to_string(), req.keyword);
     q.params.insert("type".to_string(), "100".to_string());
     q.params.insert("limit".to_string(), req.limit.to_string());
-    q.params.insert("offset".to_string(), req.offset.to_string());
+    q.params
+        .insert("offset".to_string(), req.offset.to_string());
 
     let res = client.cloudsearch(&q).await.map_err(|e| Failure {
         category: "Network".to_string(),
@@ -59,11 +60,15 @@ pub async fn get_artist(client: &ApiClient, req: IdRequest) -> Result<CatalogArt
     }
 }
 
-pub async fn get_artist_tracks(client: &ApiClient, req: PagedIdRequest) -> Result<TrackPage, Failure> {
+pub async fn get_artist_tracks(
+    client: &ApiClient,
+    req: PagedIdRequest,
+) -> Result<TrackPage, Failure> {
     let mut q = Query::new();
     q.params.insert("id".to_string(), req.id);
     q.params.insert("limit".to_string(), req.limit.to_string());
-    q.params.insert("offset".to_string(), req.offset.to_string());
+    q.params
+        .insert("offset".to_string(), req.offset.to_string());
 
     let res = client.artist_songs(&q).await.map_err(|e| Failure {
         category: "Network".to_string(),
@@ -86,11 +91,15 @@ pub async fn get_artist_tracks(client: &ApiClient, req: PagedIdRequest) -> Resul
     })
 }
 
-pub async fn get_artist_albums(client: &ApiClient, req: PagedIdRequest) -> Result<AlbumPage, Failure> {
+pub async fn get_artist_albums(
+    client: &ApiClient,
+    req: PagedIdRequest,
+) -> Result<AlbumPage, Failure> {
     let mut q = Query::new();
     q.params.insert("id".to_string(), req.id);
     q.params.insert("limit".to_string(), req.limit.to_string());
-    q.params.insert("offset".to_string(), req.offset.to_string());
+    q.params
+        .insert("offset".to_string(), req.offset.to_string());
 
     let res = client.artist_album(&q).await.map_err(|e| Failure {
         category: "Network".to_string(),
@@ -112,7 +121,10 @@ pub async fn get_artist_albums(client: &ApiClient, req: PagedIdRequest) -> Resul
     })
 }
 
-pub async fn get_hot_artists(client: &ApiClient, req: RecommendationsRequest) -> Result<ArtistPage, Failure> {
+pub async fn get_hot_artists(
+    client: &ApiClient,
+    req: RecommendationsRequest,
+) -> Result<ArtistPage, Failure> {
     let mut q = Query::new();
     q.params.insert("limit".to_string(), req.limit.to_string());
 
@@ -134,7 +146,10 @@ pub async fn get_hot_artists(client: &ApiClient, req: RecommendationsRequest) ->
     })
 }
 
-pub async fn get_similar_artists(client: &ApiClient, req: IdRequest) -> Result<ArtistPage, Failure> {
+pub async fn get_similar_artists(
+    client: &ApiClient,
+    req: IdRequest,
+) -> Result<ArtistPage, Failure> {
     let mut q = Query::new();
     q.params.insert("id".to_string(), req.id);
 
@@ -155,10 +170,16 @@ pub async fn get_similar_artists(client: &ApiClient, req: IdRequest) -> Result<A
     })
 }
 
-pub async fn subscribe_artist(client: &ApiClient, req: SubscriptionRequest) -> Result<MutationResult, Failure> {
+pub async fn subscribe_artist(
+    client: &ApiClient,
+    req: SubscriptionRequest,
+) -> Result<MutationResult, Failure> {
     let mut q = Query::new();
     q.params.insert("artistId".to_string(), req.id.clone());
-    q.params.insert("t".to_string(), if req.subscribed { "1" } else { "0" }.to_string());
+    q.params.insert(
+        "t".to_string(),
+        if req.subscribed { "1" } else { "0" }.to_string(),
+    );
 
     let res = client.artist_sub(&q).await.map_err(|e| Failure {
         category: "Network".to_string(),
@@ -172,10 +193,14 @@ pub async fn subscribe_artist(client: &ApiClient, req: SubscriptionRequest) -> R
     })
 }
 
-pub async fn get_subscribed_artists(client: &ApiClient, req: PageRequest) -> Result<ArtistPage, Failure> {
+pub async fn get_subscribed_artists(
+    client: &ApiClient,
+    req: PageRequest,
+) -> Result<ArtistPage, Failure> {
     let mut q = Query::new();
     q.params.insert("limit".to_string(), req.limit.to_string());
-    q.params.insert("offset".to_string(), req.offset.to_string());
+    q.params
+        .insert("offset".to_string(), req.offset.to_string());
 
     let res = client.artist_sublist(&q).await.map_err(|e| Failure {
         category: "Network".to_string(),
@@ -196,13 +221,17 @@ pub async fn get_subscribed_artists(client: &ApiClient, req: PageRequest) -> Res
     })
 }
 
-pub async fn browse_artists(client: &ApiClient, req: ArtistBrowseRequest) -> Result<ArtistPage, Failure> {
+pub async fn browse_artists(
+    client: &ApiClient,
+    req: ArtistBrowseRequest,
+) -> Result<ArtistPage, Failure> {
     let mut q = Query::new();
     q.params.insert("type".to_string(), req.r#type.to_string());
     q.params.insert("area".to_string(), req.area.to_string());
     q.params.insert("initial".to_string(), req.initial);
     q.params.insert("limit".to_string(), req.limit.to_string());
-    q.params.insert("offset".to_string(), req.offset.to_string());
+    q.params
+        .insert("offset".to_string(), req.offset.to_string());
 
     let res = client.artist_list(&q).await.map_err(|e| Failure {
         category: "Network".to_string(),
@@ -223,7 +252,10 @@ pub async fn browse_artists(client: &ApiClient, req: ArtistBrowseRequest) -> Res
     })
 }
 
-pub async fn get_artist_follow_count(client: &ApiClient, req: IdRequest) -> Result<FollowCount, Failure> {
+pub async fn get_artist_follow_count(
+    client: &ApiClient,
+    req: IdRequest,
+) -> Result<FollowCount, Failure> {
     let mut q = Query::new();
     q.params.insert("id".to_string(), req.id);
 

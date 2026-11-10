@@ -244,14 +244,34 @@ impl NeteaseSdkProvider {
         self.cancel_flag.store(true, Ordering::SeqCst);
     }
 
+    pub fn is_cancelled(&self) -> bool {
+        self.cancel_flag.load(Ordering::SeqCst)
+    }
+
+    /// Execute one operation. \`cancel()\` interrupts only the invoke currently
+    /// running (JNI invokes are serialized per session): the flag is consumed on
+    /// exit, so one cancellation never poisons later operations.
     pub async fn dispatch(&self, operation: i32, in_bytes: &[u8]) -> Result<Vec<u8>, Failure> {
-        if self.cancel_flag.load(Ordering::SeqCst) {
-            return Err(Failure {
+        // 入口消费掉遗留的取消标记（cancel() 只针对「当时在途」的调用）；
+        // 执行期间的取消由下方 select! 打断，退出时再兜底清一次。
+        self.cancel_flag.store(false, Ordering::SeqCst);
+        let _reset = CancelReset(self.cancel_flag.clone());
+        let flag = self.cancel_flag.clone();
+        tokio::select! {
+            biased;
+            result = self.run_op(operation, in_bytes) => result,
+            _ = async move {
+                while !flag.load(Ordering::SeqCst) {
+                    tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+                }
+            } => Err(Failure {
                 category: "Timeout".to_string(),
                 message: "Operation cancelled".to_string(),
-            });
+            }),
         }
+    }
 
+    async fn run_op(&self, operation: i32, in_bytes: &[u8]) -> Result<Vec<u8>, Failure> {
         let mut r = WireReader::new(in_bytes).map_err(|e| Failure {
             category: "Runtime".to_string(),
             message: format!("Wire decoding error: {}", e),
@@ -266,52 +286,26 @@ impl NeteaseSdkProvider {
                 caps.write(&mut w);
                 Ok(w.finish())
             }
-            tags::HTTP => {
-                let _req = HttpRequest::read(&mut r).map_err(|e| Failure {
-                    category: "Runtime".to_string(),
-                    message: format!("Wire decode error: {}", e),
-                })?;
-                let resp = HttpResponse {
-                    status: 200,
-                    headers: vec![],
-                    body: vec![],
-                };
-                let mut w = WireWriter::new();
-                resp.write(&mut w);
-                Ok(w.finish())
-            }
+            tags::HTTP => Err(Failure {
+                category: "Unsupported".to_string(),
+                message: "Runtime HTTP is a host-side service; this provider performs its own upstream requests".to_string(),
+            }),
             tags::SHA256 => {
                 let req = Bytes::read(&mut r).map_err(|e| Failure {
                     category: "Runtime".to_string(),
                     message: format!("Wire decode error: {}", e),
                 })?;
-                use md5::Digest;
-                let hash = md5::Md5::digest(&req.value).to_vec();
+                use sha2::{Digest as _, Sha256};
+                let hash = Sha256::digest(&req.value).to_vec();
                 let resp = Bytes { value: hash };
                 let mut w = WireWriter::new();
                 resp.write(&mut w);
                 Ok(w.finish())
             }
-            tags::STORAGEGET => {
-                let _req = StorageRequest::read(&mut r).map_err(|e| Failure {
-                    category: "Runtime".to_string(),
-                    message: format!("Wire decode error: {}", e),
-                })?;
-                let resp = StorageValue { value: None };
-                let mut w = WireWriter::new();
-                resp.write(&mut w);
-                Ok(w.finish())
-            }
-            tags::STORAGESET => {
-                let _req = StorageRequest::read(&mut r).map_err(|e| Failure {
-                    category: "Runtime".to_string(),
-                    message: format!("Wire decode error: {}", e),
-                })?;
-                let resp = StorageValue { value: None };
-                let mut w = WireWriter::new();
-                resp.write(&mut w);
-                Ok(w.finish())
-            }
+            tags::STORAGEGET | tags::STORAGESET => Err(Failure {
+                category: "Unsupported".to_string(),
+                message: "Runtime session storage is a host-side service for JS providers".to_string(),
+            }),
 `;
 
 for (const [name, handler] of Object.entries(handlerMap)) {
@@ -333,6 +327,14 @@ code += `            _ => Err(Failure {
                 message: format!("Unsupported operation tag: {}", operation),
             }),
         }
+    }
+}
+
+struct CancelReset(std::sync::Arc<AtomicBool>);
+
+impl Drop for CancelReset {
+    fn drop(&mut self) {
+        self.0.store(false, Ordering::SeqCst);
     }
 }
 `;

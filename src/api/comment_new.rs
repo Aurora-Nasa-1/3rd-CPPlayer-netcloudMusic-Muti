@@ -18,11 +18,15 @@ impl ApiClient {
         // 确定正确的 sortType（1 -> 99）
         let sort_type = if sort_type == 1 { 99 } else { sort_type };
 
-        // 计算 cursor
-        let cursor = match sort_type {
-            99 => format!("{}", (page_no - 1) * page_size),
-            2 => format!("normalHot#{}", (page_no - 1) * page_size),
-            _ => query.get_or("cursor", "0"),
+        // 游标：显式传入的 cursor 原样回传（不透明令牌，空串也是真实值）；
+        // 未提供时才按 sortType 由 pageNo/pageSize 推导。
+        let cursor = match query.get("cursor") {
+            Some(c) => c.to_string(),
+            None => match sort_type {
+                99 => format!("{}", (page_no - 1) * page_size),
+                2 => format!("normalHot#{}", (page_no - 1) * page_size),
+                _ => "0".to_string(),
+            },
         };
 
         let thread_id = crate::util::config::RESOURCE_TYPE_MAP

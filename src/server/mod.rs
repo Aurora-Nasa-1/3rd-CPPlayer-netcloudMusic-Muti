@@ -174,7 +174,10 @@ fn build_success_response(api_resp: ApiResponse) -> Response {
     // 确保 body 中有 code 字段（KMP-PRO 接口规范要求）
     if let Value::Object(ref mut map) = body {
         if !map.contains_key("code") {
-            map.insert("code".to_string(), Value::Number(serde_json::Number::from(200)));
+            map.insert(
+                "code".to_string(),
+                Value::Number(serde_json::Number::from(200)),
+            );
         }
     }
 
@@ -188,7 +191,10 @@ fn build_success_response(api_resp: ApiResponse) -> Response {
 
     let mut response = if status == axum::http::StatusCode::FOUND {
         // 处理 302 重定向
-        let redirect_url = body.get("redirectUrl").and_then(|u| u.as_str()).map(|s| s.to_string());
+        let redirect_url = body
+            .get("redirectUrl")
+            .and_then(|u| u.as_str())
+            .map(|s| s.to_string());
         let mut resp = (status, Json(body)).into_response();
         if let Some(url) = redirect_url {
             if let Ok(val) = header::HeaderValue::from_str(&url) {

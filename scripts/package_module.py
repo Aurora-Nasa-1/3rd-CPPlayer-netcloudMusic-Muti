@@ -207,10 +207,19 @@ def main() -> int:
             "https://interface.music.163.com",
             "https://interface3.music.163.com",
         ],
+        # 只声明真实实现的能力（契约红线：禁止虚报）。
+        # webviewLogin（webview.url/check）与 directoryBrowser 尚未实现，不声明；
+        # 云盘上传分片/完成后在 uploads.rs 如实报 Unsupported，其余云盘读写真实。
         "capabilities": [
             "search",
             "playback",
+            "qrLogin",
+            "wordSyncedLyrics",
+            "comments",
+            "cloudDrive",
+            "recommend",
             "lyricsSearch",
+            "charts",
             "userPlaylists",
             "artistExplorer",
             "albumExplorer",

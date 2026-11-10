@@ -10,7 +10,8 @@ pub async fn search_albums(client: &ApiClient, req: SearchRequest) -> Result<Alb
     q.params.insert("keywords".to_string(), req.keyword);
     q.params.insert("type".to_string(), "10".to_string());
     q.params.insert("limit".to_string(), req.limit.to_string());
-    q.params.insert("offset".to_string(), req.offset.to_string());
+    q.params
+        .insert("offset".to_string(), req.offset.to_string());
 
     let res = client.cloudsearch(&q).await.map_err(|e| Failure {
         category: "Network".to_string(),
@@ -62,10 +63,16 @@ pub async fn get_album(client: &ApiClient, req: IdRequest) -> Result<AlbumDetail
     }
 }
 
-pub async fn subscribe_album(client: &ApiClient, req: AlbumSubscribeRequest) -> Result<MutationResult, Failure> {
+pub async fn subscribe_album(
+    client: &ApiClient,
+    req: AlbumSubscribeRequest,
+) -> Result<MutationResult, Failure> {
     let mut q = Query::new();
     q.params.insert("id".to_string(), req.id.clone());
-    q.params.insert("t".to_string(), if req.subscribed { "1" } else { "0" }.to_string());
+    q.params.insert(
+        "t".to_string(),
+        if req.subscribed { "1" } else { "0" }.to_string(),
+    );
 
     let res = client.album_sub(&q).await.map_err(|e| Failure {
         category: "Network".to_string(),
@@ -79,15 +86,22 @@ pub async fn subscribe_album(client: &ApiClient, req: AlbumSubscribeRequest) -> 
     })
 }
 
-pub async fn get_digital_albums(client: &ApiClient, req: PageRequest) -> Result<AlbumPage, Failure> {
+pub async fn get_digital_albums(
+    client: &ApiClient,
+    req: PageRequest,
+) -> Result<AlbumPage, Failure> {
     let mut q = Query::new();
     q.params.insert("limit".to_string(), req.limit.to_string());
-    q.params.insert("offset".to_string(), req.offset.to_string());
+    q.params
+        .insert("offset".to_string(), req.offset.to_string());
 
-    let res = client.digital_album_purchased(&q).await.map_err(|e| Failure {
-        category: "Network".to_string(),
-        message: e.to_string(),
-    })?;
+    let res = client
+        .digital_album_purchased(&q)
+        .await
+        .map_err(|e| Failure {
+            category: "Network".to_string(),
+            message: e.to_string(),
+        })?;
 
     let items = res.body["paidAlbums"]
         .as_array()
@@ -101,11 +115,15 @@ pub async fn get_digital_albums(client: &ApiClient, req: PageRequest) -> Result<
     })
 }
 
-pub async fn browse_new_albums(client: &ApiClient, req: AlbumPageRequest) -> Result<AlbumPage, Failure> {
+pub async fn browse_new_albums(
+    client: &ApiClient,
+    req: AlbumPageRequest,
+) -> Result<AlbumPage, Failure> {
     let mut q = Query::new();
     q.params.insert("area".to_string(), req.area);
     q.params.insert("limit".to_string(), req.limit.to_string());
-    q.params.insert("offset".to_string(), req.offset.to_string());
+    q.params
+        .insert("offset".to_string(), req.offset.to_string());
 
     let res = client.album_new(&q).await.map_err(|e| Failure {
         category: "Network".to_string(),
@@ -145,9 +163,15 @@ pub async fn get_latest_albums(client: &ApiClient, _req: Bytes) -> Result<AlbumP
     })
 }
 
-pub async fn get_album_chart(client: &ApiClient, req: AlbumChartRequest) -> Result<AlbumPage, Failure> {
+pub async fn get_album_chart(
+    client: &ApiClient,
+    req: AlbumChartRequest,
+) -> Result<AlbumPage, Failure> {
     let mut q = Query::new();
-    q.params.insert("albumType".to_string(), if req.kind == "new" { "0" } else { "1" }.to_string());
+    q.params.insert(
+        "albumType".to_string(),
+        if req.kind == "new" { "0" } else { "1" }.to_string(),
+    );
     q.params.insert("type".to_string(), req.area);
 
     let res = client.album_songsaleboard(&q).await.map_err(|e| Failure {
@@ -167,10 +191,17 @@ pub async fn get_album_chart(client: &ApiClient, req: AlbumChartRequest) -> Resu
     })
 }
 
-pub async fn get_new_albums(client: &ApiClient, req: AlbumBrowseRequest) -> Result<AlbumPage, Failure> {
-    browse_new_albums(client, AlbumPageRequest {
-        area: req.area,
-        limit: req.limit,
-        offset: 0,
-    }).await
+pub async fn get_new_albums(
+    client: &ApiClient,
+    req: AlbumBrowseRequest,
+) -> Result<AlbumPage, Failure> {
+    browse_new_albums(
+        client,
+        AlbumPageRequest {
+            area: req.area,
+            limit: req.limit,
+            offset: 0,
+        },
+    )
+    .await
 }

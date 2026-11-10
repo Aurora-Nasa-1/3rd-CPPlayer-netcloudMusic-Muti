@@ -180,12 +180,7 @@ macro_rules! export_jni {
         /// JNI 导出：启动本地服务。
         #[no_mangle]
         #[allow(unsafe_code)]
-        pub unsafe extern "system" fn $start(
-            env: JNIEnv,
-            class: JClass,
-            host: JString,
-            port: i32,
-        ) {
+        pub unsafe extern "system" fn $start(env: JNIEnv, class: JClass, host: JString, port: i32) {
             start_native_server_impl(env, class, host, port)
         }
 

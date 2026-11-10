@@ -263,7 +263,10 @@ mod tests {
 
         let bytes = w.finish();
         let mut r = WireReader::new(&bytes).unwrap();
-        assert_eq!(r.optional(|reader| reader.string()).unwrap(), Some("present".to_string()));
+        assert_eq!(
+            r.optional(|reader| reader.string()).unwrap(),
+            Some("present".to_string())
+        );
         assert_eq!(r.optional(|reader| reader.string()).unwrap(), None);
         assert_eq!(
             r.list(|reader| reader.string()).unwrap(),

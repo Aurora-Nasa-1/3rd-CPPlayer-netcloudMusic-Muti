@@ -184,7 +184,8 @@ pub fn analyze_audio_file(path: &str) -> Result<AudioFeatures, String> {
             let mut intervals = Vec::new();
             for i in 1..peaks.len() {
                 let interval = peaks[i] - peaks[i - 1];
-                if interval > 5 { // Avoid too fast onsets (noise)
+                if interval > 5 {
+                    // Avoid too fast onsets (noise)
                     intervals.push(interval);
                 }
             }
@@ -198,8 +199,12 @@ pub fn analyze_audio_file(path: &str) -> Result<AudioFeatures, String> {
                 if time_per_beat > 0.0 {
                     let mut calculated_bpm = 60.0 / time_per_beat;
                     // Clamp to common ranges
-                    while calculated_bpm < 60.0 { calculated_bpm *= 2.0; }
-                    while calculated_bpm > 180.0 { calculated_bpm /= 2.0; }
+                    while calculated_bpm < 60.0 {
+                        calculated_bpm *= 2.0;
+                    }
+                    while calculated_bpm > 180.0 {
+                        calculated_bpm /= 2.0;
+                    }
                     bpm = calculated_bpm;
                 }
             }

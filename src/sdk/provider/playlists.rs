@@ -5,12 +5,16 @@ use crate::api::Query;
 use crate::request::ApiClient;
 use crate::sdk::models::*;
 
-pub async fn search_playlists(client: &ApiClient, req: SearchRequest) -> Result<PlaylistPage, Failure> {
+pub async fn search_playlists(
+    client: &ApiClient,
+    req: SearchRequest,
+) -> Result<PlaylistPage, Failure> {
     let mut q = Query::new();
     q.params.insert("keywords".to_string(), req.keyword);
     q.params.insert("type".to_string(), "1000".to_string());
     q.params.insert("limit".to_string(), req.limit.to_string());
-    q.params.insert("offset".to_string(), req.offset.to_string());
+    q.params
+        .insert("offset".to_string(), req.offset.to_string());
 
     let res = client.cloudsearch(&q).await.map_err(|e| Failure {
         category: "Network".to_string(),
@@ -57,11 +61,15 @@ pub async fn get_playlist(client: &ApiClient, req: IdRequest) -> Result<Playlist
     }
 }
 
-pub async fn get_playlist_tracks(client: &ApiClient, req: PagedIdRequest) -> Result<TrackPage, Failure> {
+pub async fn get_playlist_tracks(
+    client: &ApiClient,
+    req: PagedIdRequest,
+) -> Result<TrackPage, Failure> {
     let mut q = Query::new();
     q.params.insert("id".to_string(), req.id);
     q.params.insert("limit".to_string(), req.limit.to_string());
-    q.params.insert("offset".to_string(), req.offset.to_string());
+    q.params
+        .insert("offset".to_string(), req.offset.to_string());
 
     let res = client.playlist_track_all(&q).await.map_err(|e| Failure {
         category: "Network".to_string(),
@@ -81,11 +89,15 @@ pub async fn get_playlist_tracks(client: &ApiClient, req: PagedIdRequest) -> Res
     })
 }
 
-pub async fn get_user_playlists(client: &ApiClient, req: PagedIdRequest) -> Result<PlaylistPage, Failure> {
+pub async fn get_user_playlists(
+    client: &ApiClient,
+    req: PagedIdRequest,
+) -> Result<PlaylistPage, Failure> {
     let mut q = Query::new();
     q.params.insert("uid".to_string(), req.id);
     q.params.insert("limit".to_string(), req.limit.to_string());
-    q.params.insert("offset".to_string(), req.offset.to_string());
+    q.params
+        .insert("offset".to_string(), req.offset.to_string());
 
     let res = client.user_playlist(&q).await.map_err(|e| Failure {
         category: "Network".to_string(),
@@ -107,7 +119,10 @@ pub async fn get_user_playlists(client: &ApiClient, req: PagedIdRequest) -> Resu
     })
 }
 
-pub async fn delete_playlist(client: &ApiClient, req: IdRequest) -> Result<MutationResult, Failure> {
+pub async fn delete_playlist(
+    client: &ApiClient,
+    req: IdRequest,
+) -> Result<MutationResult, Failure> {
     let mut q = Query::new();
     q.params.insert("id".to_string(), req.id.clone());
 
@@ -123,10 +138,16 @@ pub async fn delete_playlist(client: &ApiClient, req: IdRequest) -> Result<Mutat
     })
 }
 
-pub async fn subscribe_playlist(client: &ApiClient, req: PlaylistSubscribeRequest) -> Result<MutationResult, Failure> {
+pub async fn subscribe_playlist(
+    client: &ApiClient,
+    req: PlaylistSubscribeRequest,
+) -> Result<MutationResult, Failure> {
     let mut q = Query::new();
     q.params.insert("id".to_string(), req.playlistId.clone());
-    q.params.insert("t".to_string(), if req.subscribed { "1" } else { "2" }.to_string());
+    q.params.insert(
+        "t".to_string(),
+        if req.subscribed { "1" } else { "2" }.to_string(),
+    );
 
     let res = client.playlist_subscribe(&q).await.map_err(|e| Failure {
         category: "Network".to_string(),
@@ -140,11 +161,15 @@ pub async fn subscribe_playlist(client: &ApiClient, req: PlaylistSubscribeReques
     })
 }
 
-pub async fn add_tracks_to_playlist(client: &ApiClient, req: PlaylistTracksRequest) -> Result<MutationResult, Failure> {
+pub async fn add_tracks_to_playlist(
+    client: &ApiClient,
+    req: PlaylistTracksRequest,
+) -> Result<MutationResult, Failure> {
     let mut q = Query::new();
     q.params.insert("op".to_string(), "add".to_string());
     q.params.insert("pid".to_string(), req.playlistId.clone());
-    q.params.insert("tracks".to_string(), req.trackIds.join(","));
+    q.params
+        .insert("tracks".to_string(), req.trackIds.join(","));
 
     let res = client.playlist_tracks(&q).await.map_err(|e| Failure {
         category: "Network".to_string(),
@@ -158,11 +183,15 @@ pub async fn add_tracks_to_playlist(client: &ApiClient, req: PlaylistTracksReque
     })
 }
 
-pub async fn remove_tracks_from_playlist(client: &ApiClient, req: PlaylistTracksRequest) -> Result<MutationResult, Failure> {
+pub async fn remove_tracks_from_playlist(
+    client: &ApiClient,
+    req: PlaylistTracksRequest,
+) -> Result<MutationResult, Failure> {
     let mut q = Query::new();
     q.params.insert("op".to_string(), "del".to_string());
     q.params.insert("pid".to_string(), req.playlistId.clone());
-    q.params.insert("tracks".to_string(), req.trackIds.join(","));
+    q.params
+        .insert("tracks".to_string(), req.trackIds.join(","));
 
     let res = client.playlist_tracks(&q).await.map_err(|e| Failure {
         category: "Network".to_string(),
@@ -176,7 +205,10 @@ pub async fn remove_tracks_from_playlist(client: &ApiClient, req: PlaylistTracks
     })
 }
 
-pub async fn rename_playlist(client: &ApiClient, req: PlaylistNameRequest) -> Result<MutationResult, Failure> {
+pub async fn rename_playlist(
+    client: &ApiClient,
+    req: PlaylistNameRequest,
+) -> Result<MutationResult, Failure> {
     let mut q = Query::new();
     q.params.insert("id".to_string(), req.playlistId.clone());
     q.params.insert("name".to_string(), req.name);
@@ -193,10 +225,14 @@ pub async fn rename_playlist(client: &ApiClient, req: PlaylistNameRequest) -> Re
     })
 }
 
-pub async fn create_playlist(client: &ApiClient, req: CreatePlaylistRequest) -> Result<MutationResult, Failure> {
+pub async fn create_playlist(
+    client: &ApiClient,
+    req: CreatePlaylistRequest,
+) -> Result<MutationResult, Failure> {
     let mut q = Query::new();
     q.params.insert("name".to_string(), req.name);
-    q.params.insert("privacy".to_string(), req.privacy.to_string());
+    q.params
+        .insert("privacy".to_string(), req.privacy.to_string());
 
     let res = client.playlist_create(&q).await.map_err(|e| Failure {
         category: "Network".to_string(),
@@ -211,7 +247,10 @@ pub async fn create_playlist(client: &ApiClient, req: CreatePlaylistRequest) -> 
     })
 }
 
-pub async fn get_similar_playlists(client: &ApiClient, req: IdRequest) -> Result<PlaylistPage, Failure> {
+pub async fn get_similar_playlists(
+    client: &ApiClient,
+    req: IdRequest,
+) -> Result<PlaylistPage, Failure> {
     let mut q = Query::new();
     q.params.insert("songid".to_string(), req.id);
 
@@ -232,7 +271,10 @@ pub async fn get_similar_playlists(client: &ApiClient, req: IdRequest) -> Result
     })
 }
 
-pub async fn update_playlist(client: &ApiClient, req: PlaylistUpdateRequest) -> Result<MutationResult, Failure> {
+pub async fn update_playlist(
+    client: &ApiClient,
+    req: PlaylistUpdateRequest,
+) -> Result<MutationResult, Failure> {
     let mut q = Query::new();
     q.params.insert("id".to_string(), req.id.clone());
     if let Some(name) = req.name {
@@ -257,11 +299,15 @@ pub async fn update_playlist(client: &ApiClient, req: PlaylistUpdateRequest) -> 
     })
 }
 
-pub async fn get_playlist_subscribers(client: &ApiClient, req: PagedIdRequest) -> Result<SocialUserPage, Failure> {
+pub async fn get_playlist_subscribers(
+    client: &ApiClient,
+    req: PagedIdRequest,
+) -> Result<SocialUserPage, Failure> {
     let mut q = Query::new();
     q.params.insert("id".to_string(), req.id);
     q.params.insert("limit".to_string(), req.limit.to_string());
-    q.params.insert("offset".to_string(), req.offset.to_string());
+    q.params
+        .insert("offset".to_string(), req.offset.to_string());
 
     let res = client.playlist_subscribers(&q).await.map_err(|e| Failure {
         category: "Network".to_string(),
@@ -283,7 +329,10 @@ pub async fn get_playlist_subscribers(client: &ApiClient, req: PagedIdRequest) -
     })
 }
 
-pub async fn get_playlist_categories(client: &ApiClient, _req: Bytes) -> Result<CategoryPage, Failure> {
+pub async fn get_playlist_categories(
+    client: &ApiClient,
+    _req: Bytes,
+) -> Result<CategoryPage, Failure> {
     let q = Query::new();
     let res = client.playlist_catlist(&q).await.map_err(|e| Failure {
         category: "Network".to_string(),
@@ -304,7 +353,10 @@ pub async fn get_playlist_categories(client: &ApiClient, _req: Bytes) -> Result<
     Ok(CategoryPage { items })
 }
 
-pub async fn get_hot_playlist_tags(client: &ApiClient, _req: Bytes) -> Result<CategoryPage, Failure> {
+pub async fn get_hot_playlist_tags(
+    client: &ApiClient,
+    _req: Bytes,
+) -> Result<CategoryPage, Failure> {
     let q = Query::new();
     let res = client.playlist_hot(&q).await.map_err(|e| Failure {
         category: "Network".to_string(),
@@ -315,7 +367,10 @@ pub async fn get_hot_playlist_tags(client: &ApiClient, _req: Bytes) -> Result<Ca
     if let Some(tags) = res.body["tags"].as_array() {
         for item in tags {
             let name = item["name"].as_str().unwrap_or_default().to_string();
-            let id = item["id"].as_i64().map(|n| n.to_string()).unwrap_or_else(|| name.clone());
+            let id = item["id"]
+                .as_i64()
+                .map(|n| n.to_string())
+                .unwrap_or_else(|| name.clone());
             items.push(Category { id, name });
         }
     }
@@ -323,18 +378,27 @@ pub async fn get_hot_playlist_tags(client: &ApiClient, _req: Bytes) -> Result<Ca
     Ok(CategoryPage { items })
 }
 
-pub async fn get_highquality_playlist_tags(client: &ApiClient, _req: Bytes) -> Result<CategoryPage, Failure> {
+pub async fn get_highquality_playlist_tags(
+    client: &ApiClient,
+    _req: Bytes,
+) -> Result<CategoryPage, Failure> {
     let q = Query::new();
-    let res = client.playlist_highquality_tags(&q).await.map_err(|e| Failure {
-        category: "Network".to_string(),
-        message: e.to_string(),
-    })?;
+    let res = client
+        .playlist_highquality_tags(&q)
+        .await
+        .map_err(|e| Failure {
+            category: "Network".to_string(),
+            message: e.to_string(),
+        })?;
 
     let mut items = vec![];
     if let Some(tags) = res.body["tags"].as_array() {
         for item in tags {
             let name = item["name"].as_str().unwrap_or_default().to_string();
-            let id = item["id"].as_i64().map(|n| n.to_string()).unwrap_or_else(|| name.clone());
+            let id = item["id"]
+                .as_i64()
+                .map(|n| n.to_string())
+                .unwrap_or_else(|| name.clone());
             items.push(Category { id, name });
         }
     }
@@ -342,25 +406,40 @@ pub async fn get_highquality_playlist_tags(client: &ApiClient, _req: Bytes) -> R
     Ok(CategoryPage { items })
 }
 
-pub async fn get_created_playlists(client: &ApiClient, req: PagedIdRequest) -> Result<PlaylistPage, Failure> {
+pub async fn get_created_playlists(
+    client: &ApiClient,
+    req: PagedIdRequest,
+) -> Result<PlaylistPage, Failure> {
     let res = get_user_playlists(client, req).await?;
     // Created playlists are typically those where creator.id matches user
     Ok(res)
 }
 
-pub async fn get_collected_playlists(client: &ApiClient, req: PagedIdRequest) -> Result<PlaylistPage, Failure> {
+pub async fn get_collected_playlists(
+    client: &ApiClient,
+    req: PagedIdRequest,
+) -> Result<PlaylistPage, Failure> {
     let res = get_user_playlists(client, req).await?;
     Ok(res)
 }
 
-pub async fn reorder_playlists(client: &ApiClient, req: PlaylistOrderRequest) -> Result<MutationResult, Failure> {
+pub async fn reorder_playlists(
+    client: &ApiClient,
+    req: PlaylistOrderRequest,
+) -> Result<MutationResult, Failure> {
     let mut q = Query::new();
-    q.params.insert("ids".to_string(), serde_json::to_string(&req.playlistIds).unwrap_or_default());
+    q.params.insert(
+        "ids".to_string(),
+        serde_json::to_string(&req.playlistIds).unwrap_or_default(),
+    );
 
-    let res = client.playlist_order_update(&q).await.map_err(|e| Failure {
-        category: "Network".to_string(),
-        message: e.to_string(),
-    })?;
+    let res = client
+        .playlist_order_update(&q)
+        .await
+        .map_err(|e| Failure {
+            category: "Network".to_string(),
+            message: e.to_string(),
+        })?;
 
     let code = res.body["code"].as_i64().unwrap_or(0);
     Ok(MutationResult {
@@ -369,10 +448,16 @@ pub async fn reorder_playlists(client: &ApiClient, req: PlaylistOrderRequest) ->
     })
 }
 
-pub async fn reorder_playlist_tracks(client: &ApiClient, req: PlaylistTrackOrderRequest) -> Result<MutationResult, Failure> {
+pub async fn reorder_playlist_tracks(
+    client: &ApiClient,
+    req: PlaylistTrackOrderRequest,
+) -> Result<MutationResult, Failure> {
     let mut q = Query::new();
     q.params.insert("pid".to_string(), req.id.clone());
-    q.params.insert("trackIds".to_string(), serde_json::to_string(&req.trackIds).unwrap_or_default());
+    q.params.insert(
+        "trackIds".to_string(),
+        serde_json::to_string(&req.trackIds).unwrap_or_default(),
+    );
 
     let res = client.song_order_update(&q).await.map_err(|e| Failure {
         category: "Network".to_string(),
@@ -386,15 +471,21 @@ pub async fn reorder_playlist_tracks(client: &ApiClient, req: PlaylistTrackOrder
     })
 }
 
-pub async fn update_playlist_cover(client: &ApiClient, req: PlaylistCoverRequest) -> Result<MutationResult, Failure> {
+pub async fn update_playlist_cover(
+    client: &ApiClient,
+    req: PlaylistCoverRequest,
+) -> Result<MutationResult, Failure> {
     let mut q = Query::new();
     q.params.insert("id".to_string(), req.id.clone());
     q.params.insert("img_id".to_string(), req.imageId);
 
-    let res = client.playlist_cover_update(&q).await.map_err(|e| Failure {
-        category: "Network".to_string(),
-        message: e.to_string(),
-    })?;
+    let res = client
+        .playlist_cover_update(&q)
+        .await
+        .map_err(|e| Failure {
+            category: "Network".to_string(),
+            message: e.to_string(),
+        })?;
 
     let code = res.body["code"].as_i64().unwrap_or(0);
     Ok(MutationResult {
@@ -403,24 +494,37 @@ pub async fn update_playlist_cover(client: &ApiClient, req: PlaylistCoverRequest
     })
 }
 
-pub async fn create_playlist_import(client: &ApiClient, req: PlaylistImportRequest) -> Result<PlaylistImportTask, Failure> {
+pub async fn create_playlist_import(
+    client: &ApiClient,
+    req: PlaylistImportRequest,
+) -> Result<PlaylistImportTask, Failure> {
     let mut q = Query::new();
     let text = if let Some(t) = req.text {
         t
     } else if !req.tracks.is_empty() {
-        req.tracks.iter().map(|tr| format!("{} {}", tr.title, tr.artist.as_deref().unwrap_or(""))).collect::<Vec<_>>().join("\n")
+        req.tracks
+            .iter()
+            .map(|tr| format!("{} {}", tr.title, tr.artist.as_deref().unwrap_or("")))
+            .collect::<Vec<_>>()
+            .join("\n")
     } else {
         req.links.join("\n")
     };
     q.params.insert("text".to_string(), text);
     q.params.insert("playlistName".to_string(), req.name);
 
-    let res = client.playlist_import_name_task_create(&q).await.map_err(|e| Failure {
-        category: "Network".to_string(),
-        message: e.to_string(),
-    })?;
+    let res = client
+        .playlist_import_name_task_create(&q)
+        .await
+        .map_err(|e| Failure {
+            category: "Network".to_string(),
+            message: e.to_string(),
+        })?;
 
-    let task_id = res.body["data"]["taskId"].as_str().unwrap_or("").to_string();
+    let task_id = res.body["data"]["taskId"]
+        .as_str()
+        .unwrap_or("")
+        .to_string();
     Ok(PlaylistImportTask {
         taskId: task_id,
         status: "PROCESSING".to_string(),
@@ -431,16 +535,25 @@ pub async fn create_playlist_import(client: &ApiClient, req: PlaylistImportReque
     })
 }
 
-pub async fn get_playlist_import_status(client: &ApiClient, req: IdRequest) -> Result<PlaylistImportTask, Failure> {
+pub async fn get_playlist_import_status(
+    client: &ApiClient,
+    req: IdRequest,
+) -> Result<PlaylistImportTask, Failure> {
     let mut q = Query::new();
     q.params.insert("taskId".to_string(), req.id.clone());
 
-    let res = client.playlist_import_task_status(&q).await.map_err(|e| Failure {
-        category: "Network".to_string(),
-        message: e.to_string(),
-    })?;
+    let res = client
+        .playlist_import_task_status(&q)
+        .await
+        .map_err(|e| Failure {
+            category: "Network".to_string(),
+            message: e.to_string(),
+        })?;
 
-    let status = res.body["data"]["status"].as_str().unwrap_or("DONE").to_string();
+    let status = res.body["data"]["status"]
+        .as_str()
+        .unwrap_or("DONE")
+        .to_string();
     Ok(PlaylistImportTask {
         taskId: req.id,
         status,

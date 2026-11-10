@@ -18,7 +18,10 @@ impl ApiClient {
         let levels = ["sky", "hires", "lossless", "exhigh", "higher", "standard"];
 
         // 找到请求等级在序列中的位置，只尝试当前及更低的等级
-        let start_index = levels.iter().position(|&l| l == requested_level).unwrap_or(levels.len() - 1);
+        let start_index = levels
+            .iter()
+            .position(|&l| l == requested_level)
+            .unwrap_or(levels.len() - 1);
         let mut final_response = None;
 
         for &level in &levels[start_index..] {
@@ -29,8 +32,21 @@ impl ApiClient {
                 "level": level,
             });
 
-            if let Ok(response) = self.request("/api/song/enhance/download/url/v1", data, query.to_option(CryptoType::default())).await {
-                if let Some(url) = response.body.get("data").and_then(|d| d.get(0)).and_then(|item| item.get("url")).and_then(|u| u.as_str()) {
+            if let Ok(response) = self
+                .request(
+                    "/api/song/enhance/download/url/v1",
+                    data,
+                    query.to_option(CryptoType::default()),
+                )
+                .await
+            {
+                if let Some(url) = response
+                    .body
+                    .get("data")
+                    .and_then(|d| d.get(0))
+                    .and_then(|item| item.get("url"))
+                    .and_then(|u| u.as_str())
+                {
                     if !url.is_empty() && url != "null" {
                         return Ok(ApiResponse {
                             status: 302,
@@ -52,8 +68,21 @@ impl ApiClient {
                 fallback_data["immerseType"] = json!("c51");
             }
 
-            if let Ok(fallback) = self.request("/api/song/enhance/player/url/v1", fallback_data, query.to_option(CryptoType::default())).await {
-                if let Some(url) = fallback.body.get("data").and_then(|d| d.get(0)).and_then(|item| item.get("url")).and_then(|u| u.as_str()) {
+            if let Ok(fallback) = self
+                .request(
+                    "/api/song/enhance/player/url/v1",
+                    fallback_data,
+                    query.to_option(CryptoType::default()),
+                )
+                .await
+            {
+                if let Some(url) = fallback
+                    .body
+                    .get("data")
+                    .and_then(|d| d.get(0))
+                    .and_then(|item| item.get("url"))
+                    .and_then(|u| u.as_str())
+                {
                     if !url.is_empty() && url != "null" {
                         return Ok(ApiResponse {
                             status: 302,
@@ -69,7 +98,9 @@ impl ApiClient {
         // 如果全部尝试都失败，返回最后一个响应
         match final_response {
             Some(resp) => Ok(resp),
-            None => Err(crate::error::NcmError::Unknown("No audio URL found after quality fallback".to_string())),
+            None => Err(crate::error::NcmError::Unknown(
+                "No audio URL found after quality fallback".to_string(),
+            )),
         }
     }
 }

@@ -11,8 +11,16 @@ impl ApiClient {
     pub async fn listentogether_sync_list_command(&self, query: &Query) -> Result<ApiResponse> {
         let random_list_str = query.get_or("randomList", "");
         let display_list_str = query.get_or("displayList", "");
-        let random_list: Vec<&str> = random_list_str.split(',').collect();
-        let display_list: Vec<&str> = display_list_str.split(',').collect();
+        // 空串表示**空列表**（空 REPLACE 清空队列），不能 split 出 [""]。
+        let split_list = |s: &str| -> Vec<String> {
+            if s.is_empty() {
+                Vec::new()
+            } else {
+                s.split(',').map(|x| x.to_string()).collect()
+            }
+        };
+        let random_list = split_list(&random_list_str);
+        let display_list = split_list(&display_list_str);
         let playlist_param = json!({
             "commandType": query.get_or("commandType", ""),
             "version": [{

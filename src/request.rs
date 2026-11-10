@@ -104,6 +104,10 @@ impl ApiClient {
     /// 创建新的 API 客户端
     pub fn new(cookie: Option<String>) -> Self {
         let client = reqwest::Client::builder()
+            // 宿主单次 op 有 15s 死线，且 JNI invoke 串行 —— 单请求超时必须明显
+            // 小于死线，否则一次网络挂死会拖满死线并堵死整个会话。
+            .connect_timeout(std::time::Duration::from_secs(4))
+            .timeout(std::time::Duration::from_secs(6))
             .build()
             .expect("Failed to create HTTP client");
 
@@ -121,6 +125,8 @@ impl ApiClient {
             .map_err(|e| NcmError::Unknown(format!("Invalid proxy URL: {}", e)))?;
         let client = reqwest::Client::builder()
             .proxy(proxy)
+            .connect_timeout(std::time::Duration::from_secs(4))
+            .timeout(std::time::Duration::from_secs(6))
             .build()
             .map_err(NcmError::Http)?;
 
@@ -425,6 +431,8 @@ impl ApiClient {
                 .map_err(|e| NcmError::Unknown(format!("Invalid proxy URL: {}", e)))?;
             let proxy_client = reqwest::Client::builder()
                 .proxy(proxy)
+                .connect_timeout(std::time::Duration::from_secs(4))
+                .timeout(std::time::Duration::from_secs(6))
                 .build()
                 .map_err(NcmError::Http)?;
             proxy_client

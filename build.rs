@@ -93,7 +93,11 @@ fn main() {
     }
     // 特殊处理 EXCLUDED_MODULES 中的一些常用方法
     writeln!(f_jni, "    \"/cloud/upload/check\" | \"cloud/upload/check\" => {{ client.cloud_upload_check(&query).await }}").unwrap();
-    writeln!(f_jni, "    \"/api\" | \"api\" => {{ client.api(&query).await }}").unwrap();
+    writeln!(
+        f_jni,
+        "    \"/api\" | \"api\" => {{ client.api(&query).await }}"
+    )
+    .unwrap();
 
     writeln!(
         f_jni,
