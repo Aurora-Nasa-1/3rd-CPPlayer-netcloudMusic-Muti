@@ -354,32 +354,41 @@ pub async fn get_user_comment_history(
     })
 }
 
+fn integer_value(value: &serde_json::Value) -> Option<i64> {
+    value
+        .as_i64()
+        .or_else(|| value.as_str().and_then(|s| s.parse::<i64>().ok()))
+}
+
+fn unread_count(value: &serde_json::Value) -> i32 {
+    integer_value(value).unwrap_or(0).clamp(0, i32::MAX as i64) as i32
+}
+
+fn parse_unread_counts(body: &serde_json::Value) -> UnreadCount {
+    let root = if body["data"].is_object() {
+        &body["data"]
+    } else {
+        body
+    };
+    let pick = |keys: &[&str]| -> i32 {
+        let value = keys.iter().find_map(|key| integer_value(&root[*key]));
+        value.unwrap_or(0).clamp(0, i32::MAX as i64) as i32
+    };
+
+    UnreadCount {
+        privateMessages: pick(&["msg", "privateMsg", "msgPrivateCount"]),
+        comments: pick(&["comment", "comments"]),
+        mentions: pick(&["forward", "forwards", "atMe", "@me", "mention"]),
+        notices: pick(&["notice", "notices"]),
+    }
+}
+
 pub async fn get_unread_count(client: &ApiClient, _req: Bytes) -> Result<UnreadCount, Failure> {
     let q = Query::new();
     let res = client.pl_count(&q).await.map_err(ncm_err)?;
-
-    // Counts may be nested under `data` on some upstream revisions.
-    let root = if res.body["data"].is_object() {
-        &res.body["data"]
-    } else {
-        &res.body
-    };
-    let pick = |keys: &[&str]| -> i32 {
-        keys.iter()
-            .filter_map(|k| root[*k].as_i64())
-            .next()
-            .unwrap_or(0)
-            .max(0) as i32
-    };
-
-    Ok(UnreadCount {
-        privateMessages: pick(&["msg", "privateMsg", "msgPrivateCount"]),
-        comments: pick(&["comment", "comments"]),
-        // @-mentions / forwards are their own counter; never fake 0 from a
-        // hard-coded constant.
-        mentions: pick(&["forward", "forwards", "atMe", "@me", "mention"]),
-        notices: pick(&["notice", "notices"]),
-    })
+    // @-mentions / forwards are their own counter; never fake 0 from a
+    // hard-coded constant.
+    Ok(parse_unread_counts(&res.body))
 }
 
 fn contact_user(item: &serde_json::Value) -> serde_json::Value {
@@ -398,6 +407,87 @@ fn contact_array<'a>(body: &'a serde_json::Value) -> Option<&'a Vec<serde_json::
         .or_else(|| body["data"]["recentcontacts"].as_array())
         .or_else(|| body["data"]["msgs"].as_array())
         .or_else(|| body["data"].as_array())
+}
+
+/// The SDK treats continuation cursors as opaque. This upstream endpoint only
+/// accepts a numeric offset, so this provider's cursor format is a decimal
+/// offset. Reject unknown tokens instead of silently restarting at offset zero.
+fn parse_offset_cursor(cursor: Option<&str>) -> Result<i64, Failure> {
+    match cursor {
+        None => Ok(0),
+        Some(value) if !value.is_empty() => value
+            .parse::<i64>()
+            .ok()
+            .filter(|offset| *offset >= 0)
+            .ok_or_else(|| {
+                runtime("private-message cursor must be a non-negative upstream offset")
+            }),
+        Some(_) => Err(runtime("private-message cursor must not be empty")),
+    }
+}
+
+fn numeric_id(value: &serde_json::Value) -> Option<String> {
+    value
+        .as_i64()
+        .map(|n| n.to_string())
+        .or_else(|| value.as_str().map(String::from))
+        .filter(|s| !s.is_empty())
+}
+
+fn message_payload(value: &serde_json::Value) -> serde_json::Value {
+    if value.is_object() {
+        return value.clone();
+    }
+    let Some(raw) = value.as_str() else {
+        return serde_json::Value::Null;
+    };
+    if raw.trim_start().starts_with('{') {
+        serde_json::from_str(raw).unwrap_or(serde_json::Value::Null)
+    } else {
+        serde_json::Value::Null
+    }
+}
+
+fn participant(message: &serde_json::Value, keys: &[&str]) -> Option<SocialUser> {
+    keys.iter()
+        .find_map(|key| {
+            message[*key]
+                .is_object()
+                .then(|| parse_social_user(&message[*key]))
+        })
+        .filter(|user| !user.id.is_empty())
+}
+
+/// Recent-contact records are not themselves messages. Only construct the
+/// optional SDK `lastMessage` when the upstream supplies a message ID and both
+/// participants; never reuse the conversation/contact ID or infer direction.
+fn parse_last_message(summary: &serde_json::Value) -> Option<PrivateMessage> {
+    let raw = &summary["lastMsg"];
+    let payload = message_payload(raw);
+    let sender = participant(&payload, &["fromUser", "from", "sender"])
+        .or_else(|| participant(summary, &["lastMsgFromUser", "fromUser", "sender"]))?;
+    let recipient = participant(&payload, &["toUser", "to", "recipient"])
+        .or_else(|| participant(summary, &["lastMsgToUser", "toUser", "recipient"]))?;
+    let id = numeric_id(&payload["id"])
+        .or_else(|| numeric_id(&payload["msgId"]))
+        .or_else(|| numeric_id(&summary["lastMsgId"]))
+        .or_else(|| numeric_id(&summary["lastMessageId"]))?;
+    let sent_at = payload["time"]
+        .as_i64()
+        .or_else(|| summary["lastMsgTime"].as_i64())
+        .or_else(|| summary["time"].as_i64())
+        .unwrap_or(0);
+
+    Some(PrivateMessage {
+        id,
+        sender,
+        recipient,
+        text: payload["msg"]
+            .as_str()
+            .map(String::from)
+            .unwrap_or_else(|| extract_message_text(raw)),
+        sentAtEpochMs: sent_at,
+    })
 }
 
 pub async fn get_recent_contacts(
@@ -455,13 +545,10 @@ pub async fn get_private_messages(
 ) -> Result<ConversationPage, Failure> {
     let mut q = Query::new();
     q.params.insert("limit".to_string(), req.limit.to_string());
-    let offset = req
-        .cursor
-        .as_deref()
-        .map(|c| c.parse::<i64>().unwrap_or(0))
-        .unwrap_or(0);
+    let offset = parse_offset_cursor(req.cursor.as_deref())?;
     if let Some(cursor) = req.cursor {
-        // Preserve the caller's token verbatim (null vs empty stay distinct).
+        // The token was validated against this provider's decimal-offset format;
+        // preserve the original spelling when forwarding it to the upstream.
         q.params.insert("offset".to_string(), cursor);
     }
 
@@ -474,40 +561,33 @@ pub async fn get_private_messages(
     {
         for m in arr {
             let user = parse_social_user(&contact_user(m));
-            let text = extract_message_text(&m["lastMsg"]);
-            let sent_at = m["lastMsgTime"]
-                .as_i64()
-                .or_else(|| m["time"].as_i64())
-                .unwrap_or(0);
-            let unread = m["newMsgCount"].as_i64().unwrap_or(0) as i32;
-
-            let pm = PrivateMessage {
-                id: m["id"]
-                    .as_i64()
-                    .map(|n| n.to_string())
-                    .or_else(|| m["id"].as_str().map(String::from))
-                    .unwrap_or_default(),
-                sender: user.clone(),
-                recipient: user.clone(),
-                text,
-                sentAtEpochMs: sent_at,
-            };
+            let unread = unread_count(&m["newMsgCount"]);
 
             items.push(Conversation {
                 user,
-                lastMessage: Some(pm),
+                lastMessage: parse_last_message(m),
                 unreadCount: unread,
             });
         }
     }
 
-    let more = res.body["more"].as_bool();
+    let more = res.body["more"]
+        .as_bool()
+        .or_else(|| res.body["data"]["more"].as_bool());
     // Offset continuation token for the next page.
     let cursor = if more.unwrap_or(false) {
         Some((offset + items.len() as i64).to_string())
     } else {
         None
     };
+
+    if more == Some(true) && items.is_empty() {
+        return Err(Failure {
+            category: "InvalidResponse".to_string(),
+            message: "private-message list says more is available but returned no conversations"
+                .to_string(),
+        });
+    }
 
     Ok(ConversationPage {
         items,
@@ -523,7 +603,10 @@ pub async fn get_message_history(
     let mut q = Query::new();
     q.params.insert("uid".to_string(), req.userId);
     q.params.insert("limit".to_string(), req.limit.to_string());
+    parse_offset_cursor(req.cursor.as_deref())?;
     if let Some(cursor) = req.cursor {
+        // `before` is numeric in this upstream API. Validate but keep the
+        // caller's opaque token unchanged when sending it.
         q.params.insert("before".to_string(), cursor);
     }
 
@@ -554,7 +637,9 @@ pub async fn get_message_history(
         }
     }
 
-    let more = res.body["more"].as_bool();
+    let more = res.body["more"]
+        .as_bool()
+        .or_else(|| res.body["data"]["more"].as_bool());
     // `before` paging continues from the oldest returned message; upstream
     // returns newest-first, so that is the last item's timestamp.
     let cursor = if more.unwrap_or(false) {
@@ -562,6 +647,14 @@ pub async fn get_message_history(
     } else {
         None
     };
+
+    if more == Some(true) && cursor.is_none() {
+        return Err(Failure {
+            category: "InvalidResponse".to_string(),
+            message: "private-message history says more is available but returned no messages"
+                .to_string(),
+        });
+    }
 
     Ok(MessagePage {
         items,
@@ -1392,4 +1485,70 @@ pub async fn sync_listen_together_queue(
         success: code == 200,
         id: Some(req.roomId),
     })
+}
+
+#[cfg(test)]
+mod private_message_tests {
+    use super::*;
+    use serde_json::json;
+
+    #[test]
+    fn offset_cursor_is_validated_without_coercing_unknown_tokens_to_zero() {
+        assert_eq!(parse_offset_cursor(None).unwrap(), 0);
+        assert_eq!(parse_offset_cursor(Some("12")).unwrap(), 12);
+        assert_eq!(parse_offset_cursor(Some("001")).unwrap(), 1);
+        assert!(parse_offset_cursor(Some("opaque-token")).is_err());
+        assert!(parse_offset_cursor(Some("")).is_err());
+        assert!(parse_offset_cursor(Some("-1")).is_err());
+    }
+
+    #[test]
+    fn conversation_last_message_uses_real_id_and_participants() {
+        let summary = json!({
+            "userId": 42,
+            "id": 42,
+            "lastMsgTime": 1700000000123_i64,
+            "newMsgCount": 3,
+            "lastMsg": "{\"id\":9001,\"time\":1700000000123,\"msg\":\"hello\",\"fromUser\":{\"userId\":7,\"nickname\":\"sender\"},\"toUser\":{\"userId\":42,\"nickname\":\"recipient\"}}"
+        });
+
+        let message = parse_last_message(&summary).expect("complete last message");
+        assert_eq!(message.id, "9001");
+        assert_eq!(message.sender.id, "7");
+        assert_eq!(message.recipient.id, "42");
+        assert_eq!(message.text, "hello");
+        assert_eq!(message.sentAtEpochMs, 1700000000123);
+    }
+
+    #[test]
+    fn conversation_id_is_not_fabricated_as_last_message_id_or_direction() {
+        let summary = json!({
+            "userId": 42,
+            "id": 42,
+            "lastMsgTime": 1700000000123_i64,
+            "lastMsg": "{\"msg\":\"hello\",\"type\":0}"
+        });
+
+        assert!(parse_last_message(&summary).is_none());
+    }
+
+    #[test]
+    fn unread_counts_accept_wrapped_numeric_strings_and_saturate() {
+        let counts = parse_unread_counts(&json!({
+            "data": {
+                "privateMsg": "7",
+                "comments": 2,
+                "atMe": i64::MAX,
+                "notices": -1
+            }
+        }));
+        assert_eq!(counts.privateMessages, 7);
+        assert_eq!(counts.comments, 2);
+        assert_eq!(counts.mentions, i32::MAX);
+        assert_eq!(counts.notices, 0);
+
+        let top_level = parse_unread_counts(&json!({ "msg": 4, "notice": "5" }));
+        assert_eq!(top_level.privateMessages, 4);
+        assert_eq!(top_level.notices, 5);
+    }
 }
