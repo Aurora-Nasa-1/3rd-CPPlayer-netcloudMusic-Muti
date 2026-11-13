@@ -8,6 +8,7 @@
 
 ### 1. 现代化 KMP SDK (`kmp-sdk-v1` 标准 Native Session)
 本模块纯 Rust 完整实现了 CPPlayer `kmp-sdk-v1` 契约，支持全部 161 项业务操作（包括曲库检索、解析、歌词、批量可用性、歌单、专辑、歌手、探索推荐、用户与账号会话、动态与社交、评论、一起听、MV与视频、DJ电台、云盘上传等）。
+SDK 的 `AuthActionRequest` 暂无独立国家区号字段；手机号登录或 `captcha.send` 可通过 auth-only `extraJson` 指定 `{"countryCode":"44"}`（1–4 位数字），分别映射到上游 `countrycode` / `ctcode`。省略时沿用上游默认 `86`；其他扩展键不会转发。
 
 JNI 符号（导出至 `src/sdk/jni_session.rs`）：
 ```

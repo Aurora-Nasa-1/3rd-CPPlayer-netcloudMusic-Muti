@@ -254,6 +254,80 @@ pub async fn get_current_account(
     }
 }
 
+/// `AuthActionRequest` predates a typed country-code field. For phone actions,
+/// accept only a narrowly scoped `countryCode` value from its auth-only
+/// `extraJson` extension; never forward arbitrary extension JSON upstream.
+fn auth_country_code(req: &AuthActionRequest) -> Result<Option<String>, Failure> {
+    let Some(extra) = req.extraJson.as_deref() else {
+        return Ok(None);
+    };
+    let Ok(value) = serde_json::from_str::<serde_json::Value>(extra) else {
+        return Ok(None);
+    };
+    let Some(code) = value
+        .get("countryCode")
+        .or_else(|| value.get("countrycode"))
+    else {
+        return Ok(None);
+    };
+    let Some(raw) = code.as_str() else {
+        return Err(Failure {
+            category: "Runtime".to_string(),
+            message: "phone countryCode must be a string".to_string(),
+        });
+    };
+    if !(1..=4).contains(&raw.len()) || !raw.bytes().all(|b| b.is_ascii_digit()) {
+        return Err(Failure {
+            category: "Runtime".to_string(),
+            message: "phone countryCode must contain 1..4 digits".to_string(),
+        });
+    }
+    Ok(Some(raw.to_string()))
+}
+
+fn add_auth_country_code(
+    query: &mut Query,
+    req: &AuthActionRequest,
+    upstream_key: &str,
+) -> Result<(), Failure> {
+    if let Some(country_code) = auth_country_code(req)? {
+        query.params.insert(upstream_key.to_string(), country_code);
+    }
+    Ok(())
+}
+
+fn phone_login_result(body: &serde_json::Value, response_cookies: &[String]) -> AuthActionResult {
+    let code = body["code"].as_i64().or_else(|| body["status"].as_i64());
+    let cookie = body["cookie"]
+        .as_str()
+        .filter(|s| !s.is_empty())
+        .map(String::from)
+        .or_else(|| {
+            if response_cookies.is_empty() {
+                None
+            } else {
+                Some(response_cookies.join("; "))
+            }
+        });
+    let challenge = code == Some(250) || body["needVerify"].as_bool().unwrap_or(false);
+    AuthActionResult {
+        success: code == Some(200) && !challenge,
+        code: code.map(|n| n as i32),
+        status: code.map(|n| n as i32),
+        cookie,
+        challenge,
+        verifyUrl: body["verifyUrl"]
+            .as_str()
+            .or_else(|| body["data"]["verifyUrl"].as_str())
+            .map(String::from),
+        message: body["message"]
+            .as_str()
+            .or_else(|| body["msg"].as_str())
+            .map(String::from),
+        ..Default::default()
+    }
+}
+
 pub async fn authenticate(
     client: &ApiClient,
     req: AuthActionRequest,
@@ -352,6 +426,7 @@ pub async fn authenticate(
         }
         "login.phone" | "login_phone" | "cellphone" | "phone" => {
             let mut q = Query::new();
+            add_auth_country_code(&mut q, &req, "countrycode")?;
             if let Some(phone) = req.phone {
                 q.params.insert("phone".to_string(), phone);
             }
@@ -368,33 +443,7 @@ pub async fn authenticate(
                 category: "Authentication".to_string(),
                 message: e.to_string(),
             })?;
-            let code = res.body["code"].as_i64();
-            let cookie = res.body["cookie"]
-                .as_str()
-                .filter(|s| !s.is_empty())
-                .map(String::from)
-                .or_else(|| {
-                    if !res.cookie.is_empty() {
-                        Some(res.cookie.join("; "))
-                    } else {
-                        None
-                    }
-                });
-            let challenge = code == Some(250) || res.body["needVerify"].as_bool().unwrap_or(false);
-            let verify_url = res.body["verifyUrl"].as_str().map(String::from);
-            Ok(AuthActionResult {
-                success: code == Some(200),
-                code: code.map(|n| n as i32),
-                status: code.map(|n| n as i32),
-                cookie,
-                challenge,
-                verifyUrl: verify_url,
-                message: res.body["message"]
-                    .as_str()
-                    .or_else(|| res.body["msg"].as_str())
-                    .map(String::from),
-                ..Default::default()
-            })
+            Ok(phone_login_result(&res.body, &res.cookie))
         }
         "login.email" | "login_email" | "email" => {
             let mut q = Query::new();
@@ -437,6 +486,7 @@ pub async fn authenticate(
         }
         "captcha.send" | "captcha_send" | "captcha_sent" => {
             let mut q = Query::new();
+            add_auth_country_code(&mut q, &req, "ctcode")?;
             if let Some(phone) = req.phone {
                 q.params.insert("phone".to_string(), phone);
             }
@@ -933,4 +983,92 @@ pub async fn dislike_song(client: &ApiClient, req: IdRequest) -> Result<Mutation
         success: code == 200,
         id: Some(req.id),
     })
+}
+
+#[cfg(test)]
+mod phone_auth_tests {
+    use super::*;
+    use serde_json::json;
+
+    #[test]
+    fn auth_only_country_code_extension_is_validated_and_narrowly_read() {
+        let req = AuthActionRequest {
+            action: "login.phone".to_string(),
+            extraJson: Some(r#"{"countryCode":"44","other":"ignored"}"#.to_string()),
+            ..Default::default()
+        };
+        assert_eq!(auth_country_code(&req).unwrap().as_deref(), Some("44"));
+
+        let alias = AuthActionRequest {
+            extraJson: Some(r#"{"countrycode":"65"}"#.to_string()),
+            ..Default::default()
+        };
+        assert_eq!(auth_country_code(&alias).unwrap().as_deref(), Some("65"));
+
+        let invalid = AuthActionRequest {
+            extraJson: Some(r#"{"countryCode":"+44"}"#.to_string()),
+            ..Default::default()
+        };
+        assert_eq!(auth_country_code(&invalid).unwrap_err().category, "Runtime");
+
+        let req = AuthActionRequest {
+            extraJson: Some(r#"{"countryCode":"44"}"#.to_string()),
+            ..Default::default()
+        };
+        let mut login = Query::new();
+        add_auth_country_code(&mut login, &req, "countrycode").unwrap();
+        assert_eq!(
+            login.params.get("countrycode").map(String::as_str),
+            Some("44")
+        );
+        let mut captcha = Query::new();
+        add_auth_country_code(&mut captcha, &req, "ctcode").unwrap();
+        assert_eq!(captcha.params.get("ctcode").map(String::as_str), Some("44"));
+    }
+
+    #[test]
+    fn phone_login_result_returns_success_and_cookie_from_response_headers() {
+        let result = phone_login_result(
+            &json!({ "code": 200, "msg": "ok" }),
+            &["MUSIC_U=token".to_string(), "NMTID=abc".to_string()],
+        );
+        assert!(result.success);
+        assert_eq!(result.code, Some(200));
+        assert_eq!(result.status, Some(200));
+        assert_eq!(result.cookie.as_deref(), Some("MUSIC_U=token; NMTID=abc"));
+        assert_eq!(result.message.as_deref(), Some("ok"));
+    }
+
+    #[test]
+    fn phone_login_result_preserves_challenge_without_claiming_success() {
+        let result = phone_login_result(
+            &json!({ "code": 250, "data": { "verifyUrl": "https://example.test/verify" } }),
+            &[],
+        );
+        assert!(!result.success);
+        assert!(result.challenge);
+        assert_eq!(result.code, Some(250));
+        assert_eq!(
+            result.verifyUrl.as_deref(),
+            Some("https://example.test/verify")
+        );
+        assert!(result.cookie.is_none());
+
+        let flag_only = phone_login_result(&json!({ "needVerify": true }), &[]);
+        assert!(flag_only.challenge);
+        assert!(!flag_only.success);
+    }
+
+    #[test]
+    fn phone_login_result_does_not_treat_failure_as_success_and_body_cookie_wins() {
+        let result = phone_login_result(
+            &json!({ "status": 401, "cookie": "body-cookie", "message": "denied" }),
+            &["header-cookie".to_string()],
+        );
+        assert!(!result.success);
+        assert!(!result.challenge);
+        assert_eq!(result.code, Some(401));
+        assert_eq!(result.cookie.as_deref(), Some("body-cookie"));
+        assert_eq!(result.message.as_deref(), Some("denied"));
+    }
 }
