@@ -232,6 +232,19 @@ pub async fn get_top_songs(client: &ApiClient, req: TopSongsRequest) -> Result<T
     })
 }
 
+fn personal_fm_page(body: &serde_json::Value) -> TrackPage {
+    let items = body["data"]
+        .as_array()
+        .map(|arr| arr.iter().map(parse_track).collect())
+        .unwrap_or_default();
+
+    TrackPage {
+        items,
+        total: None,
+        hasMore: None,
+    }
+}
+
 pub async fn get_personal_fm(client: &ApiClient, _req: Bytes) -> Result<TrackPage, Failure> {
     let q = Query::new();
     let res = client.personal_fm(&q).await.map_err(|e| Failure {
@@ -239,16 +252,7 @@ pub async fn get_personal_fm(client: &ApiClient, _req: Bytes) -> Result<TrackPag
         message: e.to_string(),
     })?;
 
-    let items = res.body["data"]
-        .as_array()
-        .map(|arr| arr.iter().map(parse_track).collect())
-        .unwrap_or_default();
-
-    Ok(TrackPage {
-        items,
-        total: None,
-        hasMore: None,
-    })
+    Ok(personal_fm_page(&res.body))
 }
 
 pub async fn get_similar_songs(
@@ -440,6 +444,7 @@ pub async fn get_recommendation_history_tracks(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use serde_json::json;
 
     #[test]
     fn daily_recommendations_respect_requested_limit_when_upstream_returns_more() {
@@ -483,5 +488,32 @@ mod tests {
             .collect();
         items.truncate(req.limit.max(0) as usize);
         assert_eq!(items.len(), 30);
+    }
+
+    #[test]
+    fn personal_fm_maps_tracks_and_keeps_unknown_paging_metadata_null() {
+        let page = personal_fm_page(&json!({
+            "data": [
+                { "id": 123, "name": "FM song", "dt": 180000,
+                  "ar": [{ "id": 7, "name": "artist" }],
+                  "al": { "name": "album", "picUrl": "https://example.test/cover.jpg" } }
+            ]
+        }));
+
+        assert_eq!(page.items.len(), 1);
+        assert_eq!(page.items[0].id, "123");
+        assert_eq!(page.items[0].title, "FM song");
+        assert_eq!(page.items[0].durationMs, 180000);
+        assert_eq!(page.items[0].artists[0].name, "artist");
+        assert_eq!(page.total, None);
+        assert_eq!(page.hasMore, None);
+    }
+
+    #[test]
+    fn personal_fm_accepts_an_empty_data_array_as_an_empty_page() {
+        let page = personal_fm_page(&json!({ "data": [] }));
+        assert!(page.items.is_empty());
+        assert_eq!(page.total, None);
+        assert_eq!(page.hasMore, None);
     }
 }
