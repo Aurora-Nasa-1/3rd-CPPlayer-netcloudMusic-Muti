@@ -1385,6 +1385,45 @@ impl AccountSession {
     }
 }
 
+/// Map the typed SDK field through Native v1's existing auth-only extraJson slot.
+/// The host's NativeWireCodec performs the same bridge to preserve positional compatibility.
+fn native_auth_extra_json(extra_json: Option<&str>, country_code: Option<&str>) -> Option<String> {
+    let Some(country_code) = country_code else {
+        return extra_json.map(String::from);
+    };
+    let mut object = extra_json
+        .and_then(|raw| serde_json::from_str::<serde_json::Value>(raw).ok())
+        .and_then(|value| value.as_object().cloned())
+        .unwrap_or_default();
+    object.insert(
+        "countryCode".to_string(),
+        serde_json::Value::String(country_code.to_string()),
+    );
+    Some(serde_json::Value::Object(object).to_string())
+}
+
+/// Decode the Native v1 bridge into the typed request field at the wire boundary.
+fn country_code_from_native_extra_json(
+    extra_json: Option<&str>,
+) -> Result<Option<String>, WireError> {
+    let Some(raw) = extra_json else {
+        return Ok(None);
+    };
+    let Ok(value) = serde_json::from_str::<serde_json::Value>(raw) else {
+        return Ok(None);
+    };
+    let Some(value) = value
+        .get("countryCode")
+        .or_else(|| value.get("countrycode"))
+    else {
+        return Ok(None);
+    };
+    value
+        .as_str()
+        .map(|code| Some(code.to_string()))
+        .ok_or(WireError::InvalidLength)
+}
+
 /// Named authentication workflow input; only fields relevant to action should be supplied.
 #[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]
 pub struct AuthActionRequest {
@@ -1412,10 +1451,16 @@ pub struct AuthActionRequest {
     pub verifyId: Option<String>,
     /// Legacy authentication-only extension text, not a generic endpoint passthrough.
     pub extraJson: Option<String>,
+    /// Optional calling-country code for phone actions; omission preserves the provider default (86).
+    pub countryCode: Option<String>,
 }
 
 impl AuthActionRequest {
     pub fn write(&self, w: &mut WireWriter) {
+        // Keep the Native v1 positional layout stable; the host sends typed
+        // countryCode through this auth-only bridge until the wire version changes.
+        let extra_json =
+            native_auth_extra_json(self.extraJson.as_deref(), self.countryCode.as_deref());
         w.string(&self.action);
         w.optional(self.email.as_deref(), |w, s| w.string(s));
         w.optional(self.phone.as_deref(), |w, s| w.string(s));
@@ -1427,23 +1472,37 @@ impl AuthActionRequest {
         w.optional(self.key.as_deref(), |w, s| w.string(s));
         w.optional(self.sessionId.as_deref(), |w, s| w.string(s));
         w.optional(self.verifyId.as_deref(), |w, s| w.string(s));
-        w.optional(self.extraJson.as_deref(), |w, s| w.string(s));
+        w.optional(extra_json.as_deref(), |w, s| w.string(s));
     }
 
     pub fn read(r: &mut WireReader) -> Result<Self, WireError> {
+        let action = r.string()?;
+        let email = r.optional(|r| r.string())?;
+        let phone = r.optional(|r| r.string())?;
+        let password = r.optional(|r| r.string())?;
+        let captcha = r.optional(|r| r.string())?;
+        let md5 = r.bool()?;
+        let imageCaptcha = r.optional(|r| r.string())?;
+        let challengeCookie = r.optional(|r| r.string())?;
+        let key = r.optional(|r| r.string())?;
+        let sessionId = r.optional(|r| r.string())?;
+        let verifyId = r.optional(|r| r.string())?;
+        let extraJson = r.optional(|r| r.string())?;
+        let countryCode = country_code_from_native_extra_json(extraJson.as_deref())?;
         Ok(Self {
-            action: r.string()?,
-            email: r.optional(|r| r.string())?,
-            phone: r.optional(|r| r.string())?,
-            password: r.optional(|r| r.string())?,
-            captcha: r.optional(|r| r.string())?,
-            md5: r.bool()?,
-            imageCaptcha: r.optional(|r| r.string())?,
-            challengeCookie: r.optional(|r| r.string())?,
-            key: r.optional(|r| r.string())?,
-            sessionId: r.optional(|r| r.string())?,
-            verifyId: r.optional(|r| r.string())?,
-            extraJson: r.optional(|r| r.string())?,
+            action,
+            email,
+            phone,
+            password,
+            captcha,
+            md5,
+            imageCaptcha,
+            challengeCookie,
+            key,
+            sessionId,
+            verifyId,
+            extraJson,
+            countryCode,
         })
     }
 }
@@ -4380,5 +4439,68 @@ impl ResourceMessageRequest {
             r#type: r.string()?,
             text: r.string()?,
         })
+    }
+}
+
+#[cfg(test)]
+mod auth_action_request_wire_tests {
+    use super::*;
+
+    fn encode_then_read(request: &AuthActionRequest) -> Result<AuthActionRequest, WireError> {
+        let mut writer = WireWriter::new();
+        request.write(&mut writer);
+        let bytes = writer.finish();
+        let mut reader = WireReader::new(&bytes)?;
+        let decoded = AuthActionRequest::read(&mut reader)?;
+        reader.finish()?;
+        Ok(decoded)
+    }
+
+    #[test]
+    fn typed_country_code_round_trips_through_native_v1_extra_json_slot() {
+        let request = AuthActionRequest {
+            action: "login.phone".to_string(),
+            extraJson: Some(r#"{"source":"legacy"}"#.to_string()),
+            countryCode: Some("44".to_string()),
+            ..Default::default()
+        };
+
+        let decoded = encode_then_read(&request).expect("valid Native v1 wire payload");
+        assert_eq!(decoded.countryCode.as_deref(), Some("44"));
+        let extension: serde_json::Value =
+            serde_json::from_str(decoded.extraJson.as_deref().unwrap()).unwrap();
+        assert_eq!(extension["countryCode"], "44");
+        assert_eq!(extension["source"], "legacy");
+    }
+
+    #[test]
+    fn legacy_native_host_bridge_decodes_to_typed_country_code() {
+        let request = AuthActionRequest {
+            action: "captcha.send".to_string(),
+            extraJson: Some(r#"{"countryCode":"65"}"#.to_string()),
+            ..Default::default()
+        };
+
+        let decoded = encode_then_read(&request).expect("valid legacy bridge payload");
+        assert_eq!(decoded.countryCode.as_deref(), Some("65"));
+        assert_eq!(decoded.extraJson, request.extraJson);
+    }
+
+    #[test]
+    fn non_string_country_code_bridge_is_rejected_by_wire_decoder() {
+        let request = AuthActionRequest {
+            action: "login.phone".to_string(),
+            extraJson: Some(r#"{"countryCode":44}"#.to_string()),
+            ..Default::default()
+        };
+        let mut writer = WireWriter::new();
+        request.write(&mut writer);
+        let bytes = writer.finish();
+        let mut reader = WireReader::new(&bytes).unwrap();
+
+        assert_eq!(
+            AuthActionRequest::read(&mut reader).unwrap_err(),
+            WireError::InvalidLength
+        );
     }
 }

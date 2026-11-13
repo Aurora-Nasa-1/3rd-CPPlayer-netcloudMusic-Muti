@@ -254,27 +254,10 @@ pub async fn get_current_account(
     }
 }
 
-/// `AuthActionRequest` predates a typed country-code field. For phone actions,
-/// accept only a narrowly scoped `countryCode` value from its auth-only
-/// `extraJson` extension; never forward arbitrary extension JSON upstream.
+/// Validate the typed country-code field before mapping it to an upstream query.
 fn auth_country_code(req: &AuthActionRequest) -> Result<Option<String>, Failure> {
-    let Some(extra) = req.extraJson.as_deref() else {
+    let Some(raw) = req.countryCode.as_deref() else {
         return Ok(None);
-    };
-    let Ok(value) = serde_json::from_str::<serde_json::Value>(extra) else {
-        return Ok(None);
-    };
-    let Some(code) = value
-        .get("countryCode")
-        .or_else(|| value.get("countrycode"))
-    else {
-        return Ok(None);
-    };
-    let Some(raw) = code.as_str() else {
-        return Err(Failure {
-            category: "Runtime".to_string(),
-            message: "phone countryCode must be a string".to_string(),
-        });
     };
     if !(1..=4).contains(&raw.len()) || !raw.bytes().all(|b| b.is_ascii_digit()) {
         return Err(Failure {
@@ -991,30 +974,35 @@ mod phone_auth_tests {
     use serde_json::json;
 
     #[test]
-    fn auth_only_country_code_extension_is_validated_and_narrowly_read() {
+    fn typed_country_code_validates_and_maps_to_upstream_parameter_names() {
         let req = AuthActionRequest {
             action: "login.phone".to_string(),
-            extraJson: Some(r#"{"countryCode":"44","other":"ignored"}"#.to_string()),
+            countryCode: Some("44".to_string()),
             ..Default::default()
         };
         assert_eq!(auth_country_code(&req).unwrap().as_deref(), Some("44"));
 
-        let alias = AuthActionRequest {
-            extraJson: Some(r#"{"countrycode":"65"}"#.to_string()),
+        let four_digits = AuthActionRequest {
+            countryCode: Some("1234".to_string()),
             ..Default::default()
         };
-        assert_eq!(auth_country_code(&alias).unwrap().as_deref(), Some("65"));
+        assert_eq!(
+            auth_country_code(&four_digits).unwrap().as_deref(),
+            Some("1234")
+        );
 
-        let invalid = AuthActionRequest {
-            extraJson: Some(r#"{"countryCode":"+44"}"#.to_string()),
-            ..Default::default()
-        };
-        assert_eq!(auth_country_code(&invalid).unwrap_err().category, "Runtime");
+        for invalid_code in ["", "+44", "12345", "4x"] {
+            let invalid = AuthActionRequest {
+                countryCode: Some(invalid_code.to_string()),
+                ..Default::default()
+            };
+            assert_eq!(
+                auth_country_code(&invalid).unwrap_err().category,
+                "Runtime",
+                "invalid country code: {invalid_code}"
+            );
+        }
 
-        let req = AuthActionRequest {
-            extraJson: Some(r#"{"countryCode":"44"}"#.to_string()),
-            ..Default::default()
-        };
         let mut login = Query::new();
         add_auth_country_code(&mut login, &req, "countrycode").unwrap();
         assert_eq!(
@@ -1024,6 +1012,12 @@ mod phone_auth_tests {
         let mut captcha = Query::new();
         add_auth_country_code(&mut captcha, &req, "ctcode").unwrap();
         assert_eq!(captcha.params.get("ctcode").map(String::as_str), Some("44"));
+
+        let omitted = AuthActionRequest::default();
+        assert_eq!(auth_country_code(&omitted).unwrap(), None);
+        let mut default_query = Query::new();
+        add_auth_country_code(&mut default_query, &omitted, "countrycode").unwrap();
+        assert!(!default_query.params.contains_key("countrycode"));
     }
 
     #[test]
@@ -1054,7 +1048,7 @@ mod phone_auth_tests {
         );
         assert!(result.cookie.is_none());
 
-        let flag_only = phone_login_result(&json!({ "needVerify": true }), &[]);
+        let flag_only = phone_login_result(&json!({ "code": 200, "needVerify": true }), &[]);
         assert!(flag_only.challenge);
         assert!(!flag_only.success);
     }
