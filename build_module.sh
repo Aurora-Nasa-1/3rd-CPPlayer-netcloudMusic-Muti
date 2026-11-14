@@ -6,7 +6,7 @@
 #   ./build_module.sh                 # 按当前 OS 构建桌面端（linux / macos / windows）
 #   ./build_module.sh android         # Android 三架构：arm64-v8a / armeabi-v7a / x86_64
 #   ./build_module.sh linux|windows|macos
-#   ./build_module.sh --legacy ...    # 额外导出历史宿主包名的 JNI 符号
+#   ./build_module.sh --legacy ...    # 额外导出旧 JniProvider 入口（仅兼容 1.8.7 及更早宿主）
 #
 # 产物：target/ncm-api-rs-<platform>.zip，可直接导入 CPPlayer。
 # 打包逻辑统一在 scripts/package_module.py（三端共用，避免 shell 与 PowerShell

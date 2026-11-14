@@ -19,8 +19,8 @@
     Rust 目标三元组，默认 x86_64-pc-windows-msvc。MinGW 环境可传 x86_64-pc-windows-gnu。
 
 .PARAMETER Legacy
-    额外导出历史宿主包名（cp.player.core / cp.player.kmp / cp.player）的 JNI 符号，
-    让同一份 dll 也能被旧版 CPPlayer 加载。
+    额外导出旧宿主（1.8.7 及更早）使用的 JniProvider 入口与历史包名符号。
+    仅用于显式兼容旧客户端；市场发布包应保持默认关闭。
 
 .PARAMETER Offline
     给 cargo 传 --offline，只用本地 crate 缓存构建，不访问网络。
@@ -152,15 +152,21 @@ if ($hasPython) {
     New-Item -ItemType Directory -Path $libDir -Force | Out-Null
     Copy-Item $Dll "$libDir/ncm_api_rs.dll" -Force
     Copy-Item $Dll "$staging/ncm_api_rs.dll" -Force
+    # 版本以 Cargo.toml 为唯一真相源，避免回退分支与真实包版本漂移。
+    $crateVersion = (Select-String -Path "Cargo.toml" -Pattern '^\s*version\s*=\s*"([^"]+)"' |
+        Select-Object -First 1).Matches.Groups[1].Value
+    if (-not $crateVersion) { throw "无法从 Cargo.toml 读取 version" }
     $manifest = @{
         id = "netease-cloudmusic-rs"
         name = "NeteaseCloudMusicApi-RS"
-        version = "0.2.0"
-        type = "jni"
+        version = $crateVersion
+        # 与 scripts/package_module.py 一致：旧宿主（<= 1.8.7）不认 native，
+        # 会在类型阶段明确拒绝，而不是把 SDK 包当旧 JNI Provider 静默加载。
+        type = "native"
         contract = "kmp-sdk-v1"
         entryPoint = "ncm_api_rs.dll"
         supportedAbis = @("x86_64")
-        sdkOrigins = @("https://music.163.com", "https://interface.music.163.com", "https://interface3.music.163.com")
+        sdkOrigins = @("https://music.163.com", "https://interface.music.163.com", "https://interface3.music.163.com", "https://interfacepc.music.163.com")
         capabilities = @("search", "playback", "qrLogin", "wordSyncedLyrics", "comments", "cloudDrive", "recommend", "lyricsSearch", "charts", "userPlaylists", "artistExplorer", "albumExplorer")
         apiMap = @{ "msg/private/mark/read" = "unsupported" }
     } | ConvertTo-Json -Depth 5

@@ -7,17 +7,18 @@
 ## 适配的宿主包名与 SDK 接口
 
 ### 1. 现代化 KMP SDK (`kmp-sdk-v1` 标准 Native Session)
-本模块纯 Rust 完整实现了 CPPlayer `kmp-sdk-v1` 契约，支持全部 161 项业务操作（包括曲库检索、解析、歌词、批量可用性、歌单、专辑、歌手、探索推荐、用户与账号会话、动态与社交、评论、一起听、MV与视频、DJ电台、云盘上传等）。
+本模块纯 Rust 完整实现了 CPPlayer `kmp-sdk-v1` 契约，支持全部 162 项业务操作（包括曲库检索、解析、歌词、批量可用性、歌单、专辑、歌手、探索推荐、用户与账号会话、动态与社交、评论、一起听、MV与视频、DJ电台、云盘上传等）。
 SDK 的 `AuthActionRequest.countryCode` 是手机号登录和 `captcha.send` 的 typed 可选字段，接受 1–4 位数字；省略时沿用上游默认 `86`。当前 Native v1 positional wire 为兼容旧 Provider，Host 会在 auth-only `extraJson` 槽位传递该字段；Provider 在 wire 解码边界桥接为 typed 字段，业务逻辑不解析 `extraJson`。
 
-JNI 符号（导出至 `src/sdk/jni_session.rs`）：
+JNI 符号（导出至 `src/sdk/jni_session.rs`，供 JVM / Android 的标准 NativeSession 路径使用）：
 ```
 Java_cp_player_core_provider_netease_NeteaseJniSession_createNative
 Java_cp_player_core_provider_netease_NeteaseJniSession_invokeNative
 Java_cp_player_core_provider_netease_NeteaseJniSession_cancelNative
 Java_cp_player_core_provider_netease_NeteaseJniSession_closeNative
 ```
-同时导出 `cp.player.sdk.netease.NeteaseJniSession` 对应符号供通用 SDK 接入。
+同时导出 `cp.player.sdk.netease.NeteaseJniSession` 与
+`cp.player.sdk.jni.NativeSession` 对应符号；后者是宿主当前的标准入口。
 
 ### 1.1 C ABI（GraalVM Native Image 宿主）
 
@@ -47,7 +48,7 @@ cpp_close         (handle)
 dumpbin /EXPORTS target/x86_64-pc-windows-msvc/release/ncm_api_rs.dll | Select-String "cpp_|NativeSession_"
 ```
 
-### 2. 传统 Legacy JNI 接口（兼容旧版）
+### 2. 传统 Legacy JNI 接口（默认不导出）
 ```
 Java_cp_player_core_provider_JniProvider_startNativeServer
 Java_cp_player_core_provider_JniProvider_nativeCallApi
@@ -55,6 +56,11 @@ Java_cp_player_core_provider_JniProvider_analyzeAudioFile
 ```
 
 对应宿主类 `cp.player.core.provider.JniProvider`。
+
+1.8.7 及更早的宿主不认识 `contract`，只按 `type` 选择加载器。它们会把声明为
+`type: "jni"` 的 SDK 包当成旧 JNI Provider，用旧 JSON 协议调用 `nativeCallApi`；
+这看起来能工作，实际上完全绕过了 `kmp-sdk-v1`。所以默认构建**不再导出**这组入口，
+打包 manifest 也改为 `type: "native"`：旧宿主会在类型阶段明确拒绝，而不是静默降级。
 
 > ⚠️ 用旧前缀编译的模块在新宿主上 **System.load() 仍能成功**，但首次方法调用会抛
 > `UnsatisfiedLinkError`（症状：「模块显示已加载，一调用就崩」）。宿主改包名后必须用
@@ -64,8 +70,9 @@ Java_cp_player_core_provider_JniProvider_analyzeAudioFile
 >
 > 历史沿革：`cp.player.provider` → `cp.player.kmp.provider` → `cp.player.core.provider`（当前）。
 >
-> 需要一份二进制同时兼容旧宿主时，加 `--features legacy-jni-symbols`
-> （或 `./build_module.sh --legacy`）把历史前缀一起导出。
+> 确实需要兼容 1.8.7 及更早宿主时，才加 `--features legacy-jni-symbols`
+> （或 `./build_module.sh --legacy`）。该模式只应用于本地兼容验证，
+> 不应作为市场发布包；否则旧宿主会再次绕过 SDK 契约。
 
 ## 构建
 

@@ -213,15 +213,23 @@ macro_rules! export_jni {
     };
 }
 
-// 当前宿主：cp.player.core.provider.JniProvider
+// 旧宿主：cp.player.core.provider.JniProvider
+//
+// 1.8.7 及更早的宿主只按 `type: "jni"` 选择加载器，完全忽略 `contract`，
+// 因此不会拒绝 SDK 原生包，而是把本库当成旧 JNI Provider，以旧 JSON 协议调用
+// `nativeCallApi`。那看起来「还能用」，实际绕过了 `kmp-sdk-v1`。
+// 默认不再导出这组符号：新包 manifest 同时改为 `type: "native"`，旧宿主在类型
+// 阶段就明确拒绝。确需兼容旧宿主时显式开启 `legacy-jni-symbols`，并注意市场
+// 索引仍应发布 `native` 包。
+#[cfg(feature = "legacy-jni-symbols")]
 export_jni!(
     Java_cp_player_core_provider_JniProvider_startNativeServer,
     Java_cp_player_core_provider_JniProvider_nativeCallApi,
     Java_cp_player_core_provider_JniProvider_analyzeAudioFile
 );
 
-// 历史宿主前缀（默认不导出，用 `--features legacy-jni-symbols` 开启）。
-// 同一份二进制里多套符号互不冲突，旧版宿主也能直接加载。
+// 更早的宿主前缀（同样由 `legacy-jni-symbols` 统一开启）。
+// 同一份二进制里多套符号互不冲突。
 #[cfg(feature = "legacy-jni-symbols")]
 export_jni!(
     Java_cp_cpplayer_core_provider_JniProvider_startNativeServer,

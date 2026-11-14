@@ -15,9 +15,10 @@ default = []
 server = ["axum", "tower", "tower-http", "tracing", "tracing-subscriber"]
 jni = ["dep:jni", "server"]
 jni-android = ["jni", "dep:tracing-android"]
-# 额外导出历史宿主包名的 JNI 符号（cp.cpplayer.core / cp.player.kmp / cp.player），
-# 让同一份二进制也能被旧版 CPPlayer 加载。默认只导出当前包名
-# cp.player.core.provider 的一组。
+# 额外导出旧宿主使用的 JniProvider 入口与历史包名符号
+# （cp.player.core.provider / cp.cpplayer.core.provider / cp.player.kmp.provider /
+# cp.player.provider），让同一份二进制也能被 1.8.7 及更早的 CPPlayer 加载。
+# 默认关闭：旧宿主不认 contract，会把 SDK 包当旧 JNI Provider，绕过 kmp-sdk-v1。
 legacy-jni-symbols = []
 
 [dependencies]

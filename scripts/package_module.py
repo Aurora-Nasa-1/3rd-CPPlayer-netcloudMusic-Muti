@@ -36,6 +36,9 @@ import re
 import sys
 import zipfile
 
+# 新包默认不应再导出旧宿主入口；否则 1.8.7 及更早宿主会绕过 kmp-sdk-v1。
+LEGACY_JNI_MARKER = b"Java_cp_player_core_provider_JniProvider_"
+
 # 与 Cargo.toml 的 [lib] 产物名保持一致：包名 ncm-api-rs -> 库名 ncm_api_rs
 DEFAULT_ID = "netease-cloudmusic-rs"
 DEFAULT_NAME = "NeteaseCloudMusicApi-RS"
@@ -132,6 +135,11 @@ def main() -> int:
         default=None,
         help="中间目录，默认 target/cp_module/<platform>（打包后保留便于检查）",
     )
+    parser.add_argument(
+        "--allow-legacy-jni",
+        action="store_true",
+        help="允许打包仍导出旧 JniProvider 入口的库（仅本地兼容验证；市场发布不要用）",
+    )
     args = parser.parse_args()
 
     root = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
@@ -146,6 +154,19 @@ def main() -> int:
                 f"版本漂移：期望 {args.expected_version}，但 Cargo.toml 的 version 是 {crate}。"
                 f"请把 Cargo.toml 的 version 改为 {args.expected_version} 并提交后重新打 tag。"
             )
+
+    # 默认发布包只应含 SDK 入口。`legacy-jni-symbols` 是本地兼容开关，
+    # 误带上旧入口会让 1.8.7 及更早宿主把包当成旧 JNI Provider。
+    for _abi, path in entries:
+        if not os.path.isfile(path):
+            die(f"找不到动态库: {path}")
+        with open(path, "rb") as src:
+            if not args.allow_legacy_jni and LEGACY_JNI_MARKER in src.read():
+                die(
+                    f"动态库仍导出旧 JniProvider 入口，旧宿主会绕过 kmp-sdk-v1: {path}"
+                    "\n请去掉 legacy-jni-symbols feature 后重新构建，或仅在本地验证时加 --allow-legacy-jni。"
+                    "市场发布包不应带旧入口（宁愿旧宿主明确拒绝，也不要静默降级）。"
+                )
 
     # 同一个 zip 内所有 ABI 必须用同一个库文件名：manifest 只有一个 entryPoint
     lib_names = {os.path.basename(path) for _, path in entries}
@@ -198,7 +219,10 @@ def main() -> int:
         "id": args.module_id,
         "name": args.name,
         "version": version,
-        "type": "jni",
+        # "native" 而不是 "jni"：1.8.7 及更早的宿主只认 http/jni/binary，
+        # 且完全忽略 contract 字段；用 "jni" 会让它们把 SDK 包误当旧 JNI Provider，
+        # 以旧 JSON 协议调用 nativeCallApi。1.8.8 起识别 native，仍正常加载。
+        "type": "native",
         "contract": "kmp-sdk-v1",
         "entryPoint": entry_point,
         "supportedAbis": abis,
@@ -206,6 +230,7 @@ def main() -> int:
             "https://music.163.com",
             "https://interface.music.163.com",
             "https://interface3.music.163.com",
+            "https://interfacepc.music.163.com",
         ],
         # 只声明真实实现的能力（契约红线：禁止虚报）。
         # webviewLogin（webview.url/check）与 directoryBrowser 尚未实现，不声明；
