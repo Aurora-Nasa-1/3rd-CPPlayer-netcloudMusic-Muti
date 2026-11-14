@@ -71,12 +71,12 @@ pub async fn get_playlist_tracks(
     q.params
         .insert("offset".to_string(), req.offset.to_string());
 
-    let res = client.playlist_track_all(&q).await.map_err(|e| Failure {
+    let page = client.playlist_track_page(&q).await.map_err(|e| Failure {
         category: "Network".to_string(),
         message: e.to_string(),
     })?;
 
-    let songs = res.body["songs"].as_array();
+    let songs = page.response.body["songs"].as_array();
     let items = match songs {
         Some(arr) => arr.iter().map(parse_track).collect(),
         None => vec![],
@@ -84,8 +84,8 @@ pub async fn get_playlist_tracks(
 
     Ok(TrackPage {
         items,
-        total: None,
-        hasMore: None,
+        total: Some(page.total),
+        hasMore: Some(page.has_more),
     })
 }
 
