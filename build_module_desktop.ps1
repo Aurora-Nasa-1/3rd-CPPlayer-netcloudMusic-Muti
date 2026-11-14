@@ -166,8 +166,9 @@ if ($hasPython) {
         contract = "kmp-sdk-v1"
         entryPoint = "ncm_api_rs.dll"
         supportedAbis = @("x86_64")
+        defaultCountryCode = "86"
         sdkOrigins = @("https://music.163.com", "https://interface.music.163.com", "https://interface3.music.163.com", "https://interfacepc.music.163.com")
-        capabilities = @("search", "playback", "qrLogin", "wordSyncedLyrics", "comments", "cloudDrive", "recommend", "lyricsSearch", "charts", "userPlaylists", "artistExplorer", "albumExplorer")
+        capabilities = @("search", "playback", "qrLogin", "wordSyncedLyrics", "comments", "cloudDrive", "recommend", "lyricsSearch", "charts", "userPlaylists", "artistExplorer", "albumExplorer", "socialFeed", "messages")
         apiMap = @{ "msg/private/mark/read" = "unsupported" }
     } | ConvertTo-Json -Depth 5
     [System.IO.File]::WriteAllText("$staging/manifest.json", $manifest, (New-Object System.Text.UTF8Encoding($false)))

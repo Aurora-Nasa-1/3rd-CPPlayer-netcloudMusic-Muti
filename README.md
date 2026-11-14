@@ -130,6 +130,11 @@ ncm-api-rs-android.zip
 `{"code":-1}`、**不发请求**。当前声明 `msg/private/mark/read` 为 `unsupported` ——
 上游没有这个端点（2026-10-05 实测 404），不声明的话宿主每开一次私信会话都会拿到一个 500。
 
+`manifest.json` 的 `capabilities` 是**宿主 UI 入口的门控标签**：`messages` 对应「消息」，
+`socialFeed` 对应「动态」。它不是运行期方法能力（运行期仍以 `capabilities()` 为准），
+但漏掉标签会让宿主把已实现的功能显示成「不支持」。新增 SDK 能力时必须同步
+`scripts/package_module.py` 的清单与 `build_module_desktop.ps1` 的兜底清单。
+
 ## CI
 
 `.github/workflows/build.yml` 在每次 push / PR 构建三端：

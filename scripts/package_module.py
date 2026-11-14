@@ -226,6 +226,7 @@ def main() -> int:
         "contract": "kmp-sdk-v1",
         "entryPoint": entry_point,
         "supportedAbis": abis,
+        "defaultCountryCode": "86",
         "sdkOrigins": [
             "https://music.163.com",
             "https://interface.music.163.com",
@@ -233,6 +234,10 @@ def main() -> int:
             "https://interfacepc.music.163.com",
         ],
         # 只声明真实实现的能力（契约红线：禁止虚报）。
+        # `messages` / `socialFeed` 是宿主 UI 入口的门控标签：宿主按 manifest 的
+        # knownCapabilities 决定是否显示「消息」「动态」，运行期方法能力另由
+        # MusicProvider.capabilities() 判定。漏标签会把已实现的私信/动态显示成
+        # 「不支持」，所以新增 SDK 能力时必须同步这份列表。
         # webviewLogin（webview.url/check）与 directoryBrowser 尚未实现，不声明；
         # 云盘上传分片/完成后在 uploads.rs 如实报 Unsupported，其余云盘读写真实。
         "capabilities": [
@@ -248,6 +253,8 @@ def main() -> int:
             "userPlaylists",
             "artistExplorer",
             "albumExplorer",
+            "socialFeed",
+            "messages",
         ],
         "apiMap": dict(API_MAP),
     }
