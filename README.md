@@ -19,6 +19,34 @@ Java_cp_player_core_provider_netease_NeteaseJniSession_closeNative
 ```
 同时导出 `cp.player.sdk.netease.NeteaseJniSession` 对应符号供通用 SDK 接入。
 
+### 1.1 C ABI（GraalVM Native Image 宿主）
+
+Windows 的 GraalVM Native Image 构建**不能**走 JNI：JNI 绑定挂在类对象上，宿主为了「每包独立绑定」
+要按包 `defineClass` 一份 `cp.player.sdk.jni.NativeSession`，而 native image 既不提供类文件资源
+（`getResource("...class")` 恒为 `null`），也不支持运行时定义类。
+
+所以本库**同时导出**一套 C ABI（`src/sdk/cabi.rs`），宿主用 FFM 按符号直调，一个包一个库句柄即可：
+
+```
+cpp_abi_version   -> 1                      # 宿主先探测这个，没有就回落到 JNI（JVM）
+cpp_create        (providerId, accountId, credential?, settingsJson, err, errCap) -> int64 句柄（0 = 失败，err 里是原因）
+cpp_invoke        (handle, operation, req, reqLen, out, outCap, outLen*) -> 0 成功 / 1 容量不足 / 2 ABI 层失败
+cpp_cancel        (handle)                  # 线程安全、立即返回，不释放句柄
+cpp_close         (handle)
+```
+
+规范见宿主仓库 `docs/dev/PROVIDER_NATIVE_ABI.md`。要点：
+
+- 请求/响应都是 **Wire 字节**，与 JNI 版完全同一份编解码（`src/sdk/jni_session.rs` 的共用实现）；
+- **内存全部由宿主分配**，本库不 `free` 宿主的指针、也不返回需要宿主 `free` 的指针（Windows 下 CRT 堆不同）；
+- `outCap` 不足时返回 `1`，并把所需长度写进 `outLen`，宿主扩容后重试（幂等）。
+
+两套符号留在同一个 DLL 里，JVM / Android 继续走 JNI。确认导出：
+
+```powershell
+dumpbin /EXPORTS target/x86_64-pc-windows-msvc/release/ncm_api_rs.dll | Select-String "cpp_|NativeSession_"
+```
+
 ### 2. 传统 Legacy JNI 接口（兼容旧版）
 ```
 Java_cp_player_core_provider_JniProvider_startNativeServer
