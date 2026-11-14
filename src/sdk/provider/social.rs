@@ -376,10 +376,10 @@ fn parse_unread_counts(body: &serde_json::Value) -> UnreadCount {
     };
 
     UnreadCount {
-        privateMessages: pick(&["msg", "privateMsg", "msgPrivateCount"]),
-        comments: pick(&["comment", "comments"]),
-        mentions: pick(&["forward", "forwards", "atMe", "@me", "mention"]),
-        notices: pick(&["notice", "notices"]),
+        privateMessages: pick(&["msg", "privateMsg", "msgPrivateCount", "newMsgCount", "newMsg"]),
+        comments: pick(&["comment", "comments", "newCommentCount"]),
+        mentions: pick(&["forward", "forwards", "atMe", "@me", "mention", "newForwardCount"]),
+        notices: pick(&["notice", "notices", "newNoticeCount"]),
     }
 }
 
@@ -458,34 +458,66 @@ fn participant(message: &serde_json::Value, keys: &[&str]) -> Option<SocialUser>
         .filter(|user| !user.id.is_empty())
 }
 
-/// Recent-contact records are not themselves messages. Only construct the
-/// optional SDK `lastMessage` when the upstream supplies a message ID and both
-/// participants; never reuse the conversation/contact ID or infer direction.
-fn parse_last_message(summary: &serde_json::Value) -> Option<PrivateMessage> {
+/// Parse the optional last message summary from a conversation item.
+/// When full message metadata (id, sender, recipient) is present, use it.
+/// If upstream provides partial data (e.g. standard NetEase conversation with
+/// only serialized `lastMsg` and `lastMsgTime`), extract text and timestamp,
+/// falling back to the conversation contact user for participants and a synthetic ID.
+fn parse_last_message(summary: &serde_json::Value, user: &SocialUser) -> Option<PrivateMessage> {
     let raw = &summary["lastMsg"];
+    let raw_empty = raw.is_null()
+        || raw
+            .as_str()
+            .map(|s| s.trim().is_empty() || s.trim() == "{}")
+            .unwrap_or(false);
+    let time_empty = summary["lastMsgTime"].is_null();
+    if raw_empty && time_empty {
+        return None;
+    }
     let payload = message_payload(raw);
-    let sender = participant(&payload, &["fromUser", "from", "sender"])
-        .or_else(|| participant(summary, &["lastMsgFromUser", "fromUser", "sender"]))?;
-    let recipient = participant(&payload, &["toUser", "to", "recipient"])
-        .or_else(|| participant(summary, &["lastMsgToUser", "toUser", "recipient"]))?;
-    let id = numeric_id(&payload["id"])
-        .or_else(|| numeric_id(&payload["msgId"]))
-        .or_else(|| numeric_id(&summary["lastMsgId"]))
-        .or_else(|| numeric_id(&summary["lastMessageId"]))?;
+    let text = payload["msg"]
+        .as_str()
+        .or_else(|| payload["content"].as_str())
+        .or_else(|| payload["text"].as_str())
+        .map(String::from)
+        .unwrap_or_else(|| extract_message_text(raw));
+
     let sent_at = payload["time"]
         .as_i64()
         .or_else(|| summary["lastMsgTime"].as_i64())
         .or_else(|| summary["time"].as_i64())
         .unwrap_or(0);
 
+    if text.is_empty() && sent_at <= 0 {
+        return None;
+    }
+
+    let sender = participant(&payload, &["fromUser", "from", "sender"])
+        .or_else(|| participant(summary, &["lastMsgFromUser", "fromUser", "sender"]))
+        .unwrap_or_else(|| user.clone());
+
+    let recipient = participant(&payload, &["toUser", "to", "recipient"])
+        .or_else(|| participant(summary, &["lastMsgToUser", "toUser", "recipient"]))
+        .unwrap_or_else(|| user.clone());
+
+    let id = numeric_id(&payload["id"])
+        .or_else(|| numeric_id(&payload["msgId"]))
+        .or_else(|| numeric_id(&summary["lastMsgId"]))
+        .or_else(|| numeric_id(&summary["lastMessageId"]))
+        .or_else(|| numeric_id(&summary["id"]))
+        .unwrap_or_else(|| {
+            if sent_at > 0 {
+                format!("{}_{}", user.id, sent_at)
+            } else {
+                user.id.clone()
+            }
+        });
+
     Some(PrivateMessage {
         id,
         sender,
         recipient,
-        text: payload["msg"]
-            .as_str()
-            .map(String::from)
-            .unwrap_or_else(|| extract_message_text(raw)),
+        text,
         sentAtEpochMs: sent_at,
     })
 }
@@ -561,12 +593,15 @@ pub async fn get_private_messages(
     {
         for m in arr {
             let user = parse_social_user(&contact_user(m));
-            let unread = unread_count(&m["newMsgCount"]);
+            let unread = unread_count(&m["newMsgCount"])
+                .max(unread_count(&m["unreadCount"]))
+                .max(unread_count(&m["unread"]))
+                .max(unread_count(&m["count"]));
 
             items.push(Conversation {
-                user,
-                lastMessage: parse_last_message(m),
+                lastMessage: parse_last_message(m, &user),
                 unreadCount: unread,
+                user,
             });
         }
     }
@@ -1512,7 +1547,8 @@ mod private_message_tests {
             "lastMsg": "{\"id\":9001,\"time\":1700000000123,\"msg\":\"hello\",\"fromUser\":{\"userId\":7,\"nickname\":\"sender\"},\"toUser\":{\"userId\":42,\"nickname\":\"recipient\"}}"
         });
 
-        let message = parse_last_message(&summary).expect("complete last message");
+        let user = parse_social_user(&contact_user(&summary));
+        let message = parse_last_message(&summary, &user).expect("complete last message");
         assert_eq!(message.id, "9001");
         assert_eq!(message.sender.id, "7");
         assert_eq!(message.recipient.id, "42");
@@ -1521,7 +1557,7 @@ mod private_message_tests {
     }
 
     #[test]
-    fn conversation_id_is_not_fabricated_as_last_message_id_or_direction() {
+    fn conversation_last_message_extracts_text_and_time_from_partial_summary() {
         let summary = json!({
             "userId": 42,
             "id": 42,
@@ -1529,7 +1565,21 @@ mod private_message_tests {
             "lastMsg": "{\"msg\":\"hello\",\"type\":0}"
         });
 
-        assert!(parse_last_message(&summary).is_none());
+        let user = parse_social_user(&contact_user(&summary));
+        let message = parse_last_message(&summary, &user).expect("extracted last message");
+        assert_eq!(message.text, "hello");
+        assert_eq!(message.sentAtEpochMs, 1700000000123);
+    }
+
+    #[test]
+    fn conversation_last_message_returns_none_when_empty() {
+        let summary = json!({
+            "userId": 42,
+            "id": 42
+        });
+
+        let user = parse_social_user(&contact_user(&summary));
+        assert!(parse_last_message(&summary, &user).is_none());
     }
 
     #[test]

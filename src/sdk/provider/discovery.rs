@@ -1,6 +1,6 @@
 //! Recommendations, Discovery, Banners, Toplists, and Search Suggestions.
 
-use super::parsers::{parse_banner, parse_playlist, parse_track};
+use super::parsers::{ncm_err, parse_banner, parse_playlist, parse_track};
 use crate::api::Query;
 use crate::request::ApiClient;
 use crate::sdk::models::*;
@@ -235,6 +235,7 @@ pub async fn get_top_songs(client: &ApiClient, req: TopSongsRequest) -> Result<T
 fn personal_fm_page(body: &serde_json::Value) -> TrackPage {
     let items = body["data"]
         .as_array()
+        .or_else(|| body["result"].as_array())
         .map(|arr| arr.iter().map(parse_track).collect())
         .unwrap_or_default();
 
@@ -247,10 +248,7 @@ fn personal_fm_page(body: &serde_json::Value) -> TrackPage {
 
 pub async fn get_personal_fm(client: &ApiClient, _req: Bytes) -> Result<TrackPage, Failure> {
     let q = Query::new();
-    let res = client.personal_fm(&q).await.map_err(|e| Failure {
-        category: "Network".to_string(),
-        message: e.to_string(),
-    })?;
+    let res = client.personal_fm(&q).await.map_err(ncm_err)?;
 
     Ok(personal_fm_page(&res.body))
 }
@@ -515,5 +513,16 @@ mod tests {
         assert!(page.items.is_empty());
         assert_eq!(page.total, None);
         assert_eq!(page.hasMore, None);
+    }
+
+    #[test]
+    fn personal_fm_accepts_result_field_fallback() {
+        let page = personal_fm_page(&json!({
+            "result": [
+                { "id": 456, "name": "FM song 2", "dt": 200000 }
+            ]
+        }));
+        assert_eq!(page.items.len(), 1);
+        assert_eq!(page.items[0].id, "456");
     }
 }
