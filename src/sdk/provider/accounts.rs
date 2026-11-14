@@ -279,7 +279,28 @@ fn add_auth_country_code(
     Ok(())
 }
 
-fn phone_login_result(body: &serde_json::Value, response_cookies: &[String]) -> AuthActionResult {
+/// 读取登录风控链接：上游不同接口分别放在 `verifyUrl` / `redirectUrl`。
+fn auth_verify_url(body: &serde_json::Value) -> Option<String> {
+    body["verifyUrl"]
+        .as_str()
+        .or_else(|| body["data"]["verifyUrl"].as_str())
+        .or_else(|| body["redirectUrl"].as_str())
+        .or_else(|| body["data"]["redirectUrl"].as_str())
+        .filter(|s| !s.is_empty())
+        .map(String::from)
+}
+
+/// 账号风控的判定：`250` 是验证码挑战，`10004` 是邮箱/手机号的「账号有安全风险」。
+fn auth_challenge(body: &serde_json::Value, code: Option<i64>) -> bool {
+    matches!(code, Some(250) | Some(10004))
+        || body["needVerify"].as_bool().unwrap_or(false)
+        || auth_verify_url(body).is_some()
+}
+
+fn auth_result_from_body(
+    body: &serde_json::Value,
+    response_cookies: &[String],
+) -> AuthActionResult {
     let code = body["code"].as_i64().or_else(|| body["status"].as_i64());
     let cookie = body["cookie"]
         .as_str()
@@ -292,23 +313,24 @@ fn phone_login_result(body: &serde_json::Value, response_cookies: &[String]) -> 
                 Some(response_cookies.join("; "))
             }
         });
-    let challenge = code == Some(250) || body["needVerify"].as_bool().unwrap_or(false);
+    let challenge = auth_challenge(body, code);
     AuthActionResult {
         success: code == Some(200) && !challenge,
         code: code.map(|n| n as i32),
         status: code.map(|n| n as i32),
         cookie,
         challenge,
-        verifyUrl: body["verifyUrl"]
-            .as_str()
-            .or_else(|| body["data"]["verifyUrl"].as_str())
-            .map(String::from),
+        verifyUrl: auth_verify_url(body),
         message: body["message"]
             .as_str()
             .or_else(|| body["msg"].as_str())
             .map(String::from),
         ..Default::default()
     }
+}
+
+fn phone_login_result(body: &serde_json::Value, response_cookies: &[String]) -> AuthActionResult {
+    auth_result_from_body(body, response_cookies)
 }
 
 pub async fn authenticate(
@@ -443,29 +465,7 @@ pub async fn authenticate(
                 category: "Authentication".to_string(),
                 message: e.to_string(),
             })?;
-            let code = res.body["code"].as_i64();
-            let cookie = res.body["cookie"]
-                .as_str()
-                .filter(|s| !s.is_empty())
-                .map(String::from)
-                .or_else(|| {
-                    if !res.cookie.is_empty() {
-                        Some(res.cookie.join("; "))
-                    } else {
-                        None
-                    }
-                });
-            Ok(AuthActionResult {
-                success: code == Some(200),
-                code: code.map(|n| n as i32),
-                status: code.map(|n| n as i32),
-                cookie,
-                message: res.body["message"]
-                    .as_str()
-                    .or_else(|| res.body["msg"].as_str())
-                    .map(String::from),
-                ..Default::default()
-            })
+            Ok(auth_result_from_body(&res.body, &res.cookie))
         }
         "captcha.send" | "captcha_send" | "captcha_sent" => {
             let mut q = Query::new();
@@ -477,17 +477,7 @@ pub async fn authenticate(
                 category: "Authentication".to_string(),
                 message: e.to_string(),
             })?;
-            let code = res.body["code"].as_i64();
-            Ok(AuthActionResult {
-                success: code == Some(200),
-                code: code.map(|n| n as i32),
-                status: code.map(|n| n as i32),
-                message: res.body["message"]
-                    .as_str()
-                    .or_else(|| res.body["msg"].as_str())
-                    .map(String::from),
-                ..Default::default()
-            })
+            Ok(auth_result_from_body(&res.body, &res.cookie))
         }
         "login.anonymous" | "login_anonymous" | "anonymous" => {
             let q = Query::new();
@@ -1064,5 +1054,48 @@ mod phone_auth_tests {
         assert_eq!(result.code, Some(401));
         assert_eq!(result.cookie.as_deref(), Some("body-cookie"));
         assert_eq!(result.message.as_deref(), Some("denied"));
+    }
+
+    #[test]
+    fn email_login_result_maps_redirect_url_to_verify_url() {
+        let result = auth_result_from_body(
+            &json!({
+                "code": 10004,
+                "loginType": 0,
+                "message": "账号有安全风险",
+                "redirectUrl": "https://id.163.com/mail/stable.html?username=a%40b.c"
+            }),
+            &[],
+        );
+        assert!(!result.success);
+        assert!(result.challenge);
+        assert_eq!(result.code, Some(10004));
+        assert_eq!(
+            result.verifyUrl.as_deref(),
+            Some("https://id.163.com/mail/stable.html?username=a%40b.c")
+        );
+        assert!(result.cookie.is_none());
+    }
+
+    #[test]
+    fn email_login_result_reads_nested_redirect_url_and_reports_password_error() {
+        let nested = auth_result_from_body(
+            &json!({ "code": 250, "data": { "redirectUrl": "https://example.test/verify" } }),
+            &[],
+        );
+        assert!(nested.challenge);
+        assert!(!nested.success);
+        assert_eq!(
+            nested.verifyUrl.as_deref(),
+            Some("https://example.test/verify")
+        );
+
+        let bad_password = auth_result_from_body(
+            &json!({ "code": 502, "msg": "账号或密码错误", "message": "账号或密码错误" }),
+            &[],
+        );
+        assert!(!bad_password.success);
+        assert!(!bad_password.challenge);
+        assert_eq!(bad_password.message.as_deref(), Some("账号或密码错误"));
     }
 }

@@ -34,11 +34,9 @@ impl ApiClient {
             data["password"] = Value::String(password);
         }
 
-        self.request(
-            "/api/w/login/cellphone",
-            data,
-            query.to_option(CryptoType::Weapi),
-        )
-        .await
+        // 登录风控（250 / 10004 等）要连同响应体返回，供宿主展示验证链接。
+        let mut options = query.to_option(CryptoType::Weapi);
+        options.accept_business_errors = true;
+        self.request("/api/w/login/cellphone", data, options).await
     }
 }

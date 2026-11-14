@@ -14,11 +14,9 @@ impl ApiClient {
             "secrete": "music_middleuser_pclogin",
             "cellphone": query.get("phone").unwrap_or("")
         });
-        self.request(
-            "/api/sms/captcha/sent",
-            data,
-            query.to_option(CryptoType::Weapi),
-        )
-        .await
+        // 发码也可能被风控拦下并返回验证链接，调用方需要拿到响应体。
+        let mut options = query.to_option(CryptoType::Weapi);
+        options.accept_business_errors = true;
+        self.request("/api/sms/captcha/sent", data, options).await
     }
 }

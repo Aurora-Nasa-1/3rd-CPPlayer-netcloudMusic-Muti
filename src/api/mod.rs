@@ -562,6 +562,7 @@ impl Query {
             e_r: self.e_r,
             domain: self.domain.clone(),
             check_token: false,
+            accept_business_errors: false,
         }
     }
 }

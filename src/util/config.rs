@@ -3,6 +3,11 @@ use std::collections::HashMap;
 use std::sync::LazyLock;
 
 pub const API_DOMAIN: &str = "https://interface3.music.163.com";
+/// eapi 专用域名，对齐上游 `util/config.json` 的 `eapiDomain`。
+///
+/// 邮箱登录（`/api/w/login`）只走 eapi；`interface3` 对这条链路返回 501，
+/// 换回 `interfacepc` 才会进入真正的账号校验 / 风控分支。
+pub const EAPI_DOMAIN: &str = "https://interfacepc.music.163.com";
 pub const DOMAIN: &str = "https://music.163.com";
 pub const ENCRYPT: bool = true;
 pub const ENCRYPT_RESPONSE: bool = false;

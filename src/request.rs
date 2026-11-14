@@ -79,6 +79,10 @@ pub struct RequestOption {
     pub e_r: Option<bool>,
     pub domain: Option<String>,
     pub check_token: bool,
+    /// 业务错误码（如登录风控 10004、验证码 250）不转成 `Err`，而是连同响应体
+    /// 一起返回给调用方。登录类接口需要读 `redirectUrl` / `verifyUrl`，
+    /// 若在请求层直接抛出，验证链接就永远到不了宿主。
+    pub accept_business_errors: bool,
 }
 
 /// API 响应
@@ -489,8 +493,9 @@ impl ApiClient {
             status = 200;
         }
 
-        // 状态码范围检查
-        if !(100..600).contains(&status) {
+        // 状态码范围检查。登录类调用要保留业务错误码（10004 / 250 / 501…），
+        // 否则它们会被压成 400 并抛成网络错误。
+        if !(100..600).contains(&status) && !options.accept_business_errors {
             status = 400;
         }
 
@@ -500,7 +505,7 @@ impl ApiClient {
             cookie: resp_cookies,
         };
 
-        if status == 200 || status == 302 {
+        if status == 200 || status == 302 || options.accept_business_errors {
             Ok(answer)
         } else {
             let msg = answer
