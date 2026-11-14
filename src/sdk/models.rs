@@ -3109,7 +3109,82 @@ impl CalendarPage {
     }
 }
 
-/// Social-feed entry with plain text and typed resource/image references.
+/// Non-recursive snapshot of the original social event nested in a forward.
+#[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]
+pub struct EventOrigin {
+    /// Opaque, case-sensitive provider-local identity; preserve leading zeros and punctuation.
+    pub id: String,
+    /// User attribution.
+    pub user: SocialUser,
+    /// Plain text, never an upstream JSON message envelope.
+    pub text: String,
+    /// Publication time in Unix epoch milliseconds.
+    pub publishedAtEpochMs: i64,
+    /// Opaque associated resource identity.
+    pub resourceId: Option<String>,
+    /// Associated resource kind, not an endpoint path.
+    pub resourceType: Option<String>,
+    /// Display title of the associated resource snapshot; null means unavailable.
+    pub resourceTitle: Option<String>,
+    /// Cover image URL for the associated resource snapshot.
+    pub resourceCoverUrl: Option<String>,
+    /// Secondary display text of the associated resource snapshot, such as artists or a creator; null means unavailable.
+    pub resourceSubtitle: Option<String>,
+    /// Ordered image URLs.
+    pub imageUrls: Vec<String>,
+    /// Explicit desired/current liked state, not a toggle.
+    pub liked: bool,
+    /// Known nonnegative like count.
+    pub likedCount: i32,
+    /// Known nonnegative top-level comment count.
+    pub commentCount: i32,
+    /// Known nonnegative forward/share count.
+    pub forwardCount: i32,
+    /// Optional public location attribution text.
+    pub location: Option<String>,
+}
+
+impl EventOrigin {
+    pub fn write(&self, w: &mut WireWriter) {
+        w.string(&self.id);
+        self.user.write(w);
+        w.string(&self.text);
+        w.long(self.publishedAtEpochMs);
+        w.optional(self.resourceId.as_deref(), |w, s| w.string(s));
+        w.optional(self.resourceType.as_deref(), |w, s| w.string(s));
+        w.optional(self.resourceTitle.as_deref(), |w, s| w.string(s));
+        w.optional(self.resourceCoverUrl.as_deref(), |w, s| w.string(s));
+        w.optional(self.resourceSubtitle.as_deref(), |w, s| w.string(s));
+        w.list(&self.imageUrls, |w, s| w.string(s));
+        w.bool(self.liked);
+        w.int(self.likedCount);
+        w.int(self.commentCount);
+        w.int(self.forwardCount);
+        w.optional(self.location.as_deref(), |w, s| w.string(s));
+    }
+
+    pub fn read(r: &mut WireReader) -> Result<Self, WireError> {
+        Ok(Self {
+            id: r.string()?,
+            user: SocialUser::read(r)?,
+            text: r.string()?,
+            publishedAtEpochMs: r.long()?,
+            resourceId: r.optional(|r| r.string())?,
+            resourceType: r.optional(|r| r.string())?,
+            resourceTitle: r.optional(|r| r.string())?,
+            resourceCoverUrl: r.optional(|r| r.string())?,
+            resourceSubtitle: r.optional(|r| r.string())?,
+            imageUrls: r.list(|r| r.string())?,
+            liked: r.bool()?,
+            likedCount: r.int()?,
+            commentCount: r.int()?,
+            forwardCount: r.int()?,
+            location: r.optional(|r| r.string())?,
+        })
+    }
+}
+
+/// Social-feed entry with plain text, interaction counters, an optional typed resource snapshot and an optional non-recursive forwarded source.
 #[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]
 pub struct SocialEvent {
     /// Opaque, case-sensitive provider-local identity; preserve leading zeros and punctuation.
@@ -3124,8 +3199,26 @@ pub struct SocialEvent {
     pub resourceId: Option<String>,
     /// Associated resource kind, not an endpoint path.
     pub resourceType: Option<String>,
+    /// Display title of the associated resource snapshot; null means unavailable.
+    pub resourceTitle: Option<String>,
+    /// Cover image URL for the associated resource snapshot.
+    pub resourceCoverUrl: Option<String>,
+    /// Secondary display text of the associated resource snapshot, such as artists or a creator; null means unavailable.
+    pub resourceSubtitle: Option<String>,
     /// Ordered image URLs.
     pub imageUrls: Vec<String>,
+    /// Explicit desired/current liked state, not a toggle.
+    pub liked: bool,
+    /// Known nonnegative like count.
+    pub likedCount: i32,
+    /// Known nonnegative top-level comment count.
+    pub commentCount: i32,
+    /// Known nonnegative forward/share count.
+    pub forwardCount: i32,
+    /// Original social event when this entry is a forward; null means original content.
+    pub forwardedFrom: Option<EventOrigin>,
+    /// Optional public location attribution text.
+    pub location: Option<String>,
 }
 
 impl SocialEvent {
@@ -3136,7 +3229,16 @@ impl SocialEvent {
         w.long(self.publishedAtEpochMs);
         w.optional(self.resourceId.as_deref(), |w, s| w.string(s));
         w.optional(self.resourceType.as_deref(), |w, s| w.string(s));
+        w.optional(self.resourceTitle.as_deref(), |w, s| w.string(s));
+        w.optional(self.resourceCoverUrl.as_deref(), |w, s| w.string(s));
+        w.optional(self.resourceSubtitle.as_deref(), |w, s| w.string(s));
         w.list(&self.imageUrls, |w, s| w.string(s));
+        w.bool(self.liked);
+        w.int(self.likedCount);
+        w.int(self.commentCount);
+        w.int(self.forwardCount);
+        w.optional(self.forwardedFrom.as_ref(), |w, item| item.write(w));
+        w.optional(self.location.as_deref(), |w, s| w.string(s));
     }
 
     pub fn read(r: &mut WireReader) -> Result<Self, WireError> {
@@ -3147,7 +3249,16 @@ impl SocialEvent {
             publishedAtEpochMs: r.long()?,
             resourceId: r.optional(|r| r.string())?,
             resourceType: r.optional(|r| r.string())?,
+            resourceTitle: r.optional(|r| r.string())?,
+            resourceCoverUrl: r.optional(|r| r.string())?,
+            resourceSubtitle: r.optional(|r| r.string())?,
             imageUrls: r.list(|r| r.string())?,
+            liked: r.bool()?,
+            likedCount: r.int()?,
+            commentCount: r.int()?,
+            forwardCount: r.int()?,
+            forwardedFrom: r.optional(|r| EventOrigin::read(r))?,
+            location: r.optional(|r| r.string())?,
         })
     }
 }
@@ -3252,6 +3363,34 @@ impl ForwardEventRequest {
             eventId: r.string()?,
             userId: r.string()?,
             text: r.string()?,
+        })
+    }
+}
+
+/// Explicit desired liked state for one typed social resource.
+#[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]
+pub struct ResourceLikeRequest {
+    /// Opaque, case-sensitive provider-local identity; preserve leading zeros and punctuation.
+    pub id: String,
+    /// Operation-specific discriminator; see the operation and record-specific constraints.
+    #[serde(rename = "type")]
+    pub r#type: String,
+    /// Explicit desired/current liked state, not a toggle.
+    pub liked: bool,
+}
+
+impl ResourceLikeRequest {
+    pub fn write(&self, w: &mut WireWriter) {
+        w.string(&self.id);
+        w.string(&self.r#type);
+        w.bool(self.liked);
+    }
+
+    pub fn read(r: &mut WireReader) -> Result<Self, WireError> {
+        Ok(Self {
+            id: r.string()?,
+            r#type: r.string()?,
+            liked: r.bool()?,
         })
     }
 }

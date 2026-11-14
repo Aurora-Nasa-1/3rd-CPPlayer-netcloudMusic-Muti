@@ -170,6 +170,7 @@ pub mod tags {
     pub const SENDRESOURCEMESSAGE: i32 = 164;
     pub const GETUSERCOMMENTHISTORY: i32 = 165;
     pub const GETLIKELISTPAGE: i32 = 166;
+    pub const LIKERESOURCE: i32 = 167;
 }
 
 pub mod capabilities {
@@ -334,6 +335,7 @@ pub mod capabilities {
     pub const SENDRESOURCEMESSAGE: &str = "messages.sendResource";
     pub const GETUSERCOMMENTHISTORY: &str = "comments.userHistory";
     pub const GETLIKELISTPAGE: &str = "accounts.likes.page";
+    pub const LIKERESOURCE: &str = "social.likeResource";
 }
 
 /// Returns all capabilities supported by this SDK version.
@@ -500,5 +502,6 @@ pub fn all_capabilities() -> Vec<&'static str> {
         capabilities::SENDRESOURCEMESSAGE,
         capabilities::GETUSERCOMMENTHISTORY,
         capabilities::GETLIKELISTPAGE,
+        capabilities::LIKERESOURCE,
     ]
 }

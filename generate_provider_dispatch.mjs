@@ -133,6 +133,7 @@ const handlerMap = {
   deleteEvent: "social::delete_event",
   forwardEvent: "social::forward_event",
   shareResource: "social::share_resource",
+  likeResource: "social::like_resource",
   searchUsers: "social::search_users",
   getListenTogetherStatus: "social::get_listen_together_status",
   createListenTogetherRoom: "social::create_listen_together_room",

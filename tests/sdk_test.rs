@@ -21,11 +21,12 @@ async fn test_sdk_capabilities_dispatch() {
 
     assert_eq!(PROTOCOL_VERSION, 1);
     assert_eq!(caps.supported.len(), all_capabilities().len());
-    assert_eq!(caps.supported.len(), 161);
+    assert_eq!(caps.supported.len(), 162);
     assert!(caps.supported.contains(&"tracks.search".to_string()));
     assert!(caps.supported.contains(&"tracks.resolve".to_string()));
     assert!(caps.supported.contains(&"tracks.get".to_string()));
     assert!(caps.supported.contains(&"accounts.likes.page".to_string()));
+    assert!(caps.supported.contains(&"social.likeResource".to_string()));
 }
 
 #[tokio::test]

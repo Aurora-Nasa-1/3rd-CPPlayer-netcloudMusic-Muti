@@ -23,6 +23,28 @@ fn runtime(message: &str) -> Failure {
     }
 }
 
+/// Resolve a typed social resource to the upstream thread prefix used by
+/// resource likes and comments. Event IDs carry the `A_EV_2_` thread form.
+fn social_thread_id(kind: &str, id: &str) -> Result<String, Failure> {
+    let prefix = match kind {
+        "song" | "music" | "track" => "R_SO_4_",
+        "mv" => "R_MV_5_",
+        "playlist" => "A_PL_0_",
+        "album" => "R_AL_3_",
+        "dj" | "radio" => "A_DJ_1_",
+        "video" => "R_VI_62_",
+        "event" => "A_EV_2_",
+        "digitalAlbum" => "A_DR_14_",
+        other => {
+            return Err(runtime(&format!(
+                "unsupported social resource type: {}",
+                other
+            )))
+        }
+    };
+    Ok(format!("{}{}", prefix, id))
+}
+
 /// Resolve the SDK resource-type name to the upstream numeric thread code.
 fn require_type_code(t: &str) -> Result<&'static str, Failure> {
     comment_type_code(t)
@@ -376,9 +398,22 @@ fn parse_unread_counts(body: &serde_json::Value) -> UnreadCount {
     };
 
     UnreadCount {
-        privateMessages: pick(&["msg", "privateMsg", "msgPrivateCount", "newMsgCount", "newMsg"]),
+        privateMessages: pick(&[
+            "msg",
+            "privateMsg",
+            "msgPrivateCount",
+            "newMsgCount",
+            "newMsg",
+        ]),
         comments: pick(&["comment", "comments", "newCommentCount"]),
-        mentions: pick(&["forward", "forwards", "atMe", "@me", "mention", "newForwardCount"]),
+        mentions: pick(&[
+            "forward",
+            "forwards",
+            "atMe",
+            "@me",
+            "mention",
+            "newForwardCount",
+        ]),
         notices: pick(&["notice", "notices", "newNoticeCount"]),
     }
 }
@@ -1002,6 +1037,16 @@ fn event_page_from(body: &serde_json::Value, arr_key: &str) -> EventPage {
     }
 }
 
+fn event_page_from_request(body: &serde_json::Value, arr_key: &str) -> EventPage {
+    let mut page = event_page_from(body, arr_key);
+    // The upstream reports both `more` and an explicit `lasttime`; keep the
+    // cursor only when continuation is actually possible.
+    if page.hasMore != Some(true) {
+        page.cursor = None;
+    }
+    page
+}
+
 pub async fn get_events(client: &ApiClient, req: EventPageRequest) -> Result<EventPage, Failure> {
     let mut q = Query::new();
     q.params
@@ -1011,7 +1056,7 @@ pub async fn get_events(client: &ApiClient, req: EventPageRequest) -> Result<Eve
     }
 
     let res = client.event(&q).await.map_err(ncm_err)?;
-    Ok(event_page_from(&res.body, "event"))
+    Ok(event_page_from_request(&res.body, "event"))
 }
 
 pub async fn get_user_events(
@@ -1026,7 +1071,30 @@ pub async fn get_user_events(
     }
 
     let res = client.user_event(&q).await.map_err(ncm_err)?;
-    Ok(event_page_from(&res.body, "events"))
+    Ok(event_page_from_request(&res.body, "events"))
+}
+
+pub async fn like_resource(
+    client: &ApiClient,
+    req: ResourceLikeRequest,
+) -> Result<MutationResult, Failure> {
+    let thread_id = social_thread_id(&req.r#type, &req.id)?;
+
+    let mut q = Query::new();
+    q.params.insert("id".to_string(), req.id.clone());
+    q.params.insert("threadId".to_string(), thread_id);
+    q.params.insert(
+        "t".to_string(),
+        if req.liked { "1" } else { "0" }.to_string(),
+    );
+
+    let res = client.resource_like(&q).await.map_err(ncm_err)?;
+
+    let code = res.body["code"].as_i64().unwrap_or(0);
+    Ok(MutationResult {
+        success: code == 200,
+        id: Some(req.id),
+    })
 }
 
 pub async fn delete_event(client: &ApiClient, req: IdRequest) -> Result<MutationResult, Failure> {

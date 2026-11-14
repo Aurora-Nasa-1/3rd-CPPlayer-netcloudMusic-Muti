@@ -1250,6 +1250,16 @@ impl NeteaseSdkProvider {
                 res.write(&mut w);
                 Ok(w.finish())
             }
+            tags::LIKERESOURCE => {
+                let req = ResourceLikeRequest::read(&mut r).map_err(|e| Failure {
+                    category: "Runtime".to_string(),
+                    message: format!("Wire decode error: {}", e),
+                })?;
+                let res = social::like_resource(&self.client, req).await?;
+                let mut w = WireWriter::new();
+                res.write(&mut w);
+                Ok(w.finish())
+            }
             tags::SEARCHUSERS => {
                 let req = SearchRequest::read(&mut r).map_err(|e| Failure {
                     category: "Runtime".to_string(),

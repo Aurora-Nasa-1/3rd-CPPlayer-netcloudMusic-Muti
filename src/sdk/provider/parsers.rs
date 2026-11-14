@@ -96,14 +96,38 @@ pub fn extract_message_text(v: &Value) -> String {
     raw
 }
 
-/// Parse the stringified `json` envelope of a social event into
-/// (plain text, image URLs, resource id, resource type).
+struct EventPayload {
+    text: String,
+    image_urls: Vec<String>,
+    resource_id: Option<String>,
+    resource_type: Option<String>,
+    resource_title: Option<String>,
+    resource_subtitle: Option<String>,
+    resource_cover_url: Option<String>,
+    forwarded: Option<Value>,
+}
+
+fn text_of(value: &Value) -> Option<String> {
+    value
+        .as_str()
+        .filter(|s| !s.trim().is_empty())
+        .map(String::from)
+}
+
+fn id_string(value: &Value) -> Option<String> {
+    value
+        .as_i64()
+        .map(|n| n.to_string())
+        .or_else(|| value.as_str().map(String::from))
+        .filter(|s| !s.is_empty())
+}
+
+/// Parse the stringified `json` envelope of a social event.
 ///
 /// The event list endpoints carry the payload as a JSON *string* under
 /// `json`, e.g. `{"msg":"...","pics":[{"originUrl":"..."}],"song":{...}}`.
-pub fn parse_event_payload(
-    json_field: &Value,
-) -> (String, Vec<String>, Option<String>, Option<String>) {
+/// Flatten only display-safe fields; never expose the raw envelope.
+fn parse_event_payload(json_field: &Value) -> EventPayload {
     let raw = json_field.as_str().unwrap_or_default();
     let payload: Value = if raw.trim_start().starts_with('{') {
         serde_json::from_str(raw).unwrap_or(Value::Null)
@@ -111,11 +135,7 @@ pub fn parse_event_payload(
         Value::Null
     };
 
-    let text = payload
-        .get("msg")
-        .and_then(|m| m.as_str())
-        .map(String::from)
-        .unwrap_or_default();
+    let text = text_of(payload.get("msg").unwrap_or(&Value::Null)).unwrap_or_default();
 
     let image_urls = payload
         .get("pics")
@@ -139,6 +159,9 @@ pub fn parse_event_payload(
     // Associated resource: first typed payload object wins.
     let mut resource_id = None;
     let mut resource_type = None;
+    let mut resource_title = None;
+    let mut resource_subtitle = None;
+    let mut resource_cover_url = None;
     for (key, kind) in [
         ("song", "song"),
         ("playlist", "playlist"),
@@ -150,36 +173,127 @@ pub fn parse_event_payload(
         ("event", "event"),
     ] {
         if let Some(obj) = payload.get(key).and_then(|v| v.as_object()) {
-            if let Some(id) = obj
-                .get("id")
-                .and_then(|i| i.as_i64().map(|n| n.to_string()))
-                .or_else(|| obj.get("id").and_then(|i| i.as_str().map(String::from)))
-            {
+            if let Some(id) = id_string(obj.get("id").unwrap_or(&Value::Null)) {
                 resource_id = Some(id);
                 resource_type = Some(kind.to_string());
+                resource_title = text_of(obj.get("name").unwrap_or(&Value::Null))
+                    .or_else(|| text_of(obj.get("title").unwrap_or(&Value::Null)));
+                resource_subtitle = obj
+                    .get("ar")
+                    .and_then(|v| v.as_array())
+                    .or_else(|| obj.get("artists").and_then(|v| v.as_array()))
+                    .or_else(|| obj.get("artist").and_then(|v| v.as_array()))
+                    .map(|arr| {
+                        arr.iter()
+                            .filter_map(|artist| text_of(&artist["name"]))
+                            .collect::<Vec<_>>()
+                            .join(" / ")
+                    })
+                    .filter(|s| !s.is_empty())
+                    .or_else(|| {
+                        obj.get("creator")
+                            .and_then(|c| text_of(c.get("nickname").unwrap_or(&Value::Null)))
+                    })
+                    .or_else(|| text_of(obj.get("artistName").unwrap_or(&Value::Null)));
+                resource_cover_url = text_of(obj.get("picUrl").unwrap_or(&Value::Null))
+                    .or_else(|| text_of(obj.get("coverUrl").unwrap_or(&Value::Null)))
+                    .or_else(|| text_of(obj.get("cover").unwrap_or(&Value::Null)))
+                    .or_else(|| text_of(obj.get("imgUrl").unwrap_or(&Value::Null)))
+                    .or_else(|| obj.get("al").and_then(|al| text_of(&al["picUrl"])));
                 break;
             }
         }
     }
 
-    (text, image_urls, resource_id, resource_type)
+    EventPayload {
+        text,
+        image_urls,
+        resource_id,
+        resource_type,
+        resource_title,
+        resource_subtitle,
+        resource_cover_url,
+        forwarded: payload.get("event").filter(|v| v.is_object()).cloned(),
+    }
 }
 
 /// Build a SocialEvent from one upstream event entry.
 pub fn parse_event(ev: &Value) -> SocialEvent {
-    let (text, image_urls, resource_id, resource_type) = parse_event_payload(&ev["json"]);
-    SocialEvent {
-        id: ev["id"]
-            .as_i64()
-            .map(|n| n.to_string())
-            .or_else(|| ev["id"].as_str().map(String::from))
-            .unwrap_or_default(),
+    parse_event_with_forward(ev)
+}
+
+fn parse_event_origin(ev: &Value) -> EventOrigin {
+    let payload = parse_event_payload(&ev["json"]);
+    let info = &ev["info"];
+    EventOrigin {
+        id: id_string(&ev["id"]).unwrap_or_default(),
         user: parse_social_user(&ev["user"]),
-        text,
+        text: payload.text,
         publishedAtEpochMs: ev["eventTime"].as_i64().unwrap_or(0),
-        resourceId: resource_id,
-        resourceType: resource_type,
-        imageUrls: image_urls,
+        resourceId: payload.resource_id,
+        resourceType: payload.resource_type,
+        resourceTitle: payload.resource_title,
+        resourceCoverUrl: payload.resource_cover_url,
+        resourceSubtitle: payload.resource_subtitle,
+        imageUrls: payload.image_urls,
+        liked: info["liked"].as_bool().unwrap_or(false),
+        likedCount: info["likedCount"]
+            .as_i64()
+            .unwrap_or(0)
+            .clamp(0, i32::MAX as i64) as i32,
+        commentCount: info["commentCount"]
+            .as_i64()
+            .unwrap_or(0)
+            .clamp(0, i32::MAX as i64) as i32,
+        forwardCount: info["shareCount"]
+            .as_i64()
+            .or_else(|| info["forwardCount"].as_i64())
+            .unwrap_or(0)
+            .clamp(0, i32::MAX as i64) as i32,
+        location: text_of(
+            ev.get("eventInfo")
+                .and_then(|v| v.get("location"))
+                .unwrap_or(&Value::Null),
+        )
+        .or_else(|| text_of(ev.get("location").unwrap_or(&Value::Null))),
+    }
+}
+
+fn parse_event_with_forward(ev: &Value) -> SocialEvent {
+    let payload = parse_event_payload(&ev["json"]);
+    let info = &ev["info"];
+    SocialEvent {
+        id: id_string(&ev["id"]).unwrap_or_default(),
+        user: parse_social_user(&ev["user"]),
+        text: payload.text,
+        publishedAtEpochMs: ev["eventTime"].as_i64().unwrap_or(0),
+        resourceId: payload.resource_id,
+        resourceType: payload.resource_type,
+        resourceTitle: payload.resource_title,
+        resourceCoverUrl: payload.resource_cover_url,
+        resourceSubtitle: payload.resource_subtitle,
+        imageUrls: payload.image_urls,
+        liked: info["liked"].as_bool().unwrap_or(false),
+        likedCount: info["likedCount"]
+            .as_i64()
+            .unwrap_or(0)
+            .clamp(0, i32::MAX as i64) as i32,
+        commentCount: info["commentCount"]
+            .as_i64()
+            .unwrap_or(0)
+            .clamp(0, i32::MAX as i64) as i32,
+        forwardCount: info["shareCount"]
+            .as_i64()
+            .or_else(|| info["forwardCount"].as_i64())
+            .unwrap_or(0)
+            .clamp(0, i32::MAX as i64) as i32,
+        forwardedFrom: payload.forwarded.as_ref().map(parse_event_origin),
+        location: text_of(
+            ev.get("eventInfo")
+                .and_then(|v| v.get("location"))
+                .unwrap_or(&Value::Null),
+        )
+        .or_else(|| text_of(ev.get("location").unwrap_or(&Value::Null))),
     }
 }
 
