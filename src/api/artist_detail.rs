@@ -16,7 +16,7 @@ impl ApiClient {
         self.request(
             &format!("/api/artist/head/info/get?id={}", id),
             data,
-            query.to_option(CryptoType::Weapi),
+            query.to_option(CryptoType::default()),
         )
         .await
     }

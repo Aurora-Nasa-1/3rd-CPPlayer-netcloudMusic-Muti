@@ -16,7 +16,7 @@ impl ApiClient {
         self.request(
             "/api/login/qrcode/client/login",
             data,
-            query.to_option(CryptoType::Weapi),
+            query.to_option(CryptoType::default()),
         )
         .await
     }

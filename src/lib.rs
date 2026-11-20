@@ -2,7 +2,7 @@
 //!
 //! 原项目: <https://github.com/NeteaseCloudMusicApiEnhanced/api-enhanced>
 //! 从 Node.js 版本移植的 Rust 原生实现
-//! 支持 weapi / eapi / linuxapi 三种加密方式
+//! 支持 weapi / eapi / xeapi / linuxapi 四种加密方式
 
 #![deny(unsafe_code)]
 #![allow(clippy::missing_safety_doc)]

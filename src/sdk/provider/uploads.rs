@@ -39,7 +39,7 @@ pub async fn prepare_cloud_upload(
     q.params
         .insert("bitrate".to_string(), req.bitrate.to_string());
     q.params
-        .insert("fileSize".to_string(), req.sizeBytes.to_string());
+        .insert("length".to_string(), req.sizeBytes.to_string());
 
     let res = client.cloud_upload_check(&q).await.map_err(|e| Failure {
         category: "Network".to_string(),

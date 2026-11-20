@@ -12,11 +12,15 @@ impl ApiClient {
         let data = json!({
             "type": 3
         });
-        self.request(
-            "/api/login/qrcode/unikey",
-            data,
-            query.to_option(CryptoType::Weapi),
-        )
-        .await
+        let mut result = self
+            .request(
+                "/api/login/qrcode/unikey",
+                data,
+                query.to_option(CryptoType::default()),
+            )
+            .await?;
+        result.status = 200;
+        result.body = json!({ "data": result.body, "code": 200 });
+        Ok(result)
     }
 }
