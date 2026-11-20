@@ -198,7 +198,7 @@ def main() -> int:
         "id": args.module_id,
         "name": args.name,
         "version": version,
-        "type": "jni",
+        "type": "native",
         "contract": "kmp-sdk-v1",
         "entryPoint": entry_point,
         "supportedAbis": abis,
