@@ -15,6 +15,7 @@ impl ApiClient {
             "https": "true",
             "phone": query.get_or("phone", ""),
             "countrycode": query.get_or("countrycode", "86"),
+            "secureCaptcha": query.get_or("sca", ""),
             "remember": "true"
         });
 

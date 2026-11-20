@@ -10,12 +10,15 @@ impl ApiClient {
     /// 对应 /song/url/v1/302
     ///
     /// 实现音质自动降级逻辑：
-    /// 依次尝试请求的音质等级，若无有效 URL 则逐级降低音质 (hires -> lossless -> exhigh -> higher -> standard)
+    /// 依次尝试请求的音质等级，若无有效 URL 则逐级降低音质。
     pub async fn song_url_v1_302(&self, query: &Query) -> Result<ApiResponse> {
         let id = query.get_or("id", "0");
         let requested_level = query.get_or("level", "standard");
 
-        let levels = ["sky", "hires", "lossless", "exhigh", "higher", "standard"];
+        let levels = [
+            "sky", "jymaster", "vivid", "jyeffect", "hires", "lossless", "exhigh", "higher",
+            "standard",
+        ];
 
         // 找到请求等级在序列中的位置，只尝试当前及更低的等级
         let start_index = levels
@@ -66,6 +69,9 @@ impl ApiClient {
             });
             if level == "sky" {
                 fallback_data["immerseType"] = json!("c51");
+            }
+            if level == "vivid" {
+                fallback_data["encodeType"] = json!("mp3");
             }
 
             if let Ok(fallback) = self

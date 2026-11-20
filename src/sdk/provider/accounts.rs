@@ -346,6 +346,7 @@ pub async fn authenticate(
             })?;
             let key = res.body["data"]["unkey"]
                 .as_str()
+                .or_else(|| res.body["data"]["unikey"].as_str())
                 .or_else(|| res.body["unikey"].as_str())
                 .or_else(|| res.body["unkey"].as_str())
                 .or_else(|| res.body["data"].as_str())

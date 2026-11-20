@@ -12,7 +12,7 @@ impl ApiClient {
         let data = json!({
             "userId": query.get_or("uid", "0"),
             "time": "0",
-            "limit": query.get_or("limit", "30").parse::<i64>().unwrap_or(30),
+            "limit": query.get_or("limit", "20").parse::<i64>().unwrap_or(20),
             "offset": query.get_or("offset", "0").parse::<i64>().unwrap_or(0),
             "getcounts": "true"
         });

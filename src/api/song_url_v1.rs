@@ -8,7 +8,10 @@ impl ApiClient {
         let id = query.get_or("id", "0");
         let requested_level = query.get_or("level", "standard");
 
-        let levels = ["sky", "hires", "lossless", "exhigh", "higher", "standard"];
+        let levels = [
+            "sky", "jymaster", "vivid", "jyeffect", "hires", "lossless", "exhigh", "higher",
+            "standard",
+        ];
         let start_index = levels
             .iter()
             .position(|&l| l == requested_level)
@@ -23,14 +26,17 @@ impl ApiClient {
                 "encodeType": "flac"
             });
             if level == "sky" {
-                data["immerseType"] = json!("c51");
+                data["immerseType"] = json!(query.get_or("immerseType", "c51"));
+            }
+            if level == "vivid" {
+                data["encodeType"] = json!("mp3");
             }
 
             if let Ok(response) = self
                 .request(
                     "/api/song/enhance/player/url/v1",
                     data,
-                    query.to_option(CryptoType::Eapi),
+                    query.to_option(CryptoType::Xeapi),
                 )
                 .await
             {
