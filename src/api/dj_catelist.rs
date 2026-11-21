@@ -17,4 +17,14 @@ impl ApiClient {
         )
         .await
     }
+
+    /// 播客新版一级/子分类列表
+    pub async fn dj_category_list(&self, query: &Query) -> Result<ApiResponse> {
+        self.request(
+            "/api/dj/radio/category/list",
+            json!({}),
+            query.to_option(CryptoType::Xeapi),
+        )
+        .await
+    }
 }

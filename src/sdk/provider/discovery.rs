@@ -12,13 +12,21 @@ pub async fn get_recommended_songs(
     let mut q = Query::new();
     q.params.insert("limit".to_string(), req.limit.to_string());
 
-    let res = client.recommend_songs(&q).await.map_err(|e| Failure {
-        category: "Network".to_string(),
-        message: e.to_string(),
-    })?;
+    let res =
+        if req.mode.eq_ignore_ascii_case("dailystyle") || req.mode.eq_ignore_ascii_case("style") {
+            client.recommend_category_songs(&q).await
+        } else {
+            client.recommend_songs(&q).await
+        }
+        .map_err(|e| Failure {
+            category: "Network".to_string(),
+            message: e.to_string(),
+        })?;
 
     let songs = res.body["data"]["dailySongs"]
         .as_array()
+        .or_else(|| res.body["data"]["songs"].as_array())
+        .or_else(|| res.body["data"]["result"].as_array())
         .or_else(|| res.body["recommend"].as_array());
 
     let mut items: Vec<Track> = match songs {
@@ -167,13 +175,17 @@ pub async fn get_personalized_new_songs(
 
 pub async fn get_banners(client: &ApiClient, _req: Bytes) -> Result<BannerPage, Failure> {
     let q = Query::new();
-    let res = client.banner(&q).await.map_err(|e| Failure {
-        category: "Network".to_string(),
-        message: e.to_string(),
-    })?;
+    let res = match client.banner_v3(&q).await {
+        Ok(value) => value,
+        Err(_) => client.banner(&q).await.map_err(|e| Failure {
+            category: "Network".to_string(),
+            message: e.to_string(),
+        })?,
+    };
 
     let items = res.body["banners"]
         .as_array()
+        .or_else(|| res.body["data"].as_array())
         .map(|arr| arr.iter().map(parse_banner).collect())
         .unwrap_or_default();
 

@@ -726,16 +726,37 @@ pub async fn search_dj_radios(
 
 pub async fn get_dj_categories(client: &ApiClient, _req: Bytes) -> Result<CategoryPage, Failure> {
     let q = Query::new();
-    let res = client.dj_catelist(&q).await.map_err(|e| Failure {
-        category: "Network".to_string(),
-        message: e.to_string(),
-    })?;
+    let res = match client.dj_category_list(&q).await {
+        Ok(value) => value,
+        Err(_) => client.dj_catelist(&q).await.map_err(|e| Failure {
+            category: "Network".to_string(),
+            message: e.to_string(),
+        })?,
+    };
 
     let mut items = vec![];
-    if let Some(arr) = res.body["categories"].as_array() {
+    let categories = res.body["categories"].as_array().cloned().or_else(|| {
+        res.body["data"]["parentCategoryVoList"]
+            .as_array()
+            .map(|parents| {
+                parents
+                    .iter()
+                    .flat_map(|parent| {
+                        std::iter::once(parent)
+                            .chain(parent["subCategoryVO"].as_array().into_iter().flatten())
+                    })
+                    .cloned()
+                    .collect()
+            })
+    });
+    if let Some(arr) = categories.as_ref() {
         for c in arr {
             items.push(Category {
-                id: c["id"].as_i64().map(|n| n.to_string()).unwrap_or_default(),
+                id: c["id"]
+                    .as_i64()
+                    .map(|n| n.to_string())
+                    .or_else(|| c["id"].as_str().map(String::from))
+                    .unwrap_or_default(),
                 name: c["name"].as_str().unwrap_or_default().to_string(),
             });
         }

@@ -27,4 +27,15 @@ impl ApiClient {
         )
         .await
     }
+
+    /// 首页 Banner v3（新版客户端接口）
+    pub async fn banner_v3(&self, query: &Query) -> Result<ApiResponse> {
+        let client_type = query.get_or("clientType", "android");
+        self.request(
+            "/api/banner/get/v3",
+            json!({ "clientType": client_type }),
+            query.to_option(CryptoType::Weapi),
+        )
+        .await
+    }
 }

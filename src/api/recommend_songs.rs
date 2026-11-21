@@ -22,4 +22,24 @@ impl ApiClient {
         )
         .await
     }
+
+    /// 每日风格推荐歌曲（新版首页推荐）
+    pub async fn recommend_category_songs(&self, query: &Query) -> Result<ApiResponse> {
+        self.request(
+            "/api/homepage/category/daily/song/list",
+            json!({}),
+            query.to_option(CryptoType::Xeapi),
+        )
+        .await
+    }
+
+    /// 每日风格推荐配置
+    pub async fn recommend_category_configs(&self, query: &Query) -> Result<ApiResponse> {
+        self.request(
+            "/api/homepage/daily/song/config/get",
+            json!({}),
+            query.to_option(CryptoType::Xeapi),
+        )
+        .await
+    }
 }
