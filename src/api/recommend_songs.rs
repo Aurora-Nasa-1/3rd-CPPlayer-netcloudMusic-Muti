@@ -9,14 +9,16 @@ impl ApiClient {
     /// 每日推荐歌曲（需要登录）
     /// 对应 /recommend/songs
     pub async fn recommend_songs(&self, query: &Query) -> Result<ApiResponse> {
-        let mut data = json!({});
+        let mut data = json!({
+            "ispush": query.get_or("ispush", "false"),
+        });
         if let Some(afresh) = query.get("afresh") {
             data["afresh"] = json!(afresh);
         }
         self.request(
             "/api/v3/discovery/recommend/songs",
             data,
-            query.to_option(CryptoType::Weapi),
+            query.to_option(CryptoType::Xeapi),
         )
         .await
     }
