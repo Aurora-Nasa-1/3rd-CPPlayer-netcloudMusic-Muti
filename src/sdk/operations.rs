@@ -56,6 +56,7 @@ pub mod tags {
     pub const POSTCOMMENT: i32 = 50;
     pub const LIKECOMMENT: i32 = 51;
     pub const GETPERSONALFM: i32 = 52;
+    pub const GETPERSONALFMMODE: i32 = 170;
     pub const GETSIMILARSONGS: i32 = 53;
     pub const GETINTELLIGENCESONGS: i32 = 54;
     pub const SUBSCRIBEALBUM: i32 = 55;

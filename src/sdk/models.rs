@@ -500,6 +500,30 @@ impl RecommendationsRequest {
     }
 }
 
+/// A bounded personal-radio request with provider-defined mode selectors.
+#[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]
+pub struct FmModeRequest {
+    pub mode: String,
+    pub subMode: String,
+    pub limit: i32,
+}
+
+impl FmModeRequest {
+    pub fn write(&self, w: &mut WireWriter) {
+        w.string(&self.mode);
+        w.string(&self.subMode);
+        w.int(self.limit);
+    }
+
+    pub fn read(r: &mut WireReader) -> Result<Self, WireError> {
+        Ok(Self {
+            mode: r.string()?,
+            subMode: r.string()?,
+            limit: r.int()?,
+        })
+    }
+}
+
 /// Playlist category and order selectors with a bounded selection size.
 #[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]
 pub struct PlaylistBrowseRequest {

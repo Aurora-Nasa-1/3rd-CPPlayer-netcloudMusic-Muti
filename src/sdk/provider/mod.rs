@@ -700,6 +700,16 @@ impl NeteaseSdkProvider {
                 res.write(&mut w);
                 Ok(w.finish())
             }
+            tags::GETPERSONALFMMODE => {
+                let req = FmModeRequest::read(&mut r).map_err(|e| Failure {
+                    category: "Runtime".to_string(),
+                    message: format!("Wire decode error: {}", e),
+                })?;
+                let res = discovery::get_personal_fm_mode(&self.client, req).await?;
+                let mut w = WireWriter::new();
+                res.write(&mut w);
+                Ok(w.finish())
+            }
             tags::GETSIMILARSONGS => {
                 let req = SimilarSongsRequest::read(&mut r).map_err(|e| Failure {
                     category: "Runtime".to_string(),

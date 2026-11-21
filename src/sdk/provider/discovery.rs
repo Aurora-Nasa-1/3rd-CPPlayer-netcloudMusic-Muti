@@ -265,6 +265,20 @@ pub async fn get_personal_fm(client: &ApiClient, _req: Bytes) -> Result<TrackPag
     Ok(personal_fm_page(&res.body))
 }
 
+pub async fn get_personal_fm_mode(
+    client: &ApiClient,
+    req: FmModeRequest,
+) -> Result<TrackPage, Failure> {
+    let mut q = Query::new();
+    q.params.insert("mode".to_string(), req.mode);
+    q.params.insert("submode".to_string(), req.subMode);
+    q.params.insert("limit".to_string(), req.limit.to_string());
+    let res = client.personal_fm_mode(&q).await.map_err(ncm_err)?;
+    let mut page = personal_fm_page(&res.body);
+    page.items.truncate(req.limit.max(0) as usize);
+    Ok(page)
+}
+
 pub async fn get_similar_songs(
     client: &ApiClient,
     req: SimilarSongsRequest,
