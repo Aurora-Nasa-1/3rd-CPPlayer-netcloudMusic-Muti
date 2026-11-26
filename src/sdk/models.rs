@@ -209,6 +209,165 @@ impl MediaResource {
     }
 }
 
+/// DRM signaling and license acquisition metadata; never contains content keys or reusable license bytes.
+#[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]
+pub struct DrmDescriptor {
+    /// Canonical host DRM identifier: widevine, playready, fairplay or clearkey.
+    pub keySystem: String,
+    /// Absolute provider license endpoint when direct HTTP exchange is possible; null when exchangeLicense is required.
+    pub licenseUrl: Option<String>,
+    /// Explicit headers; no implicit account Cookie or Authorization forwarding.
+    pub headers: Vec<Header>,
+    /// DRM signaling scheme from the media manifest, such as an HLS KEYFORMAT or DASH schemeIdUri.
+    pub schemeIdUri: Option<String>,
+    /// Opaque initialization data, at most 1048576 bytes; never a content key.
+    pub initData: Option<Vec<u8>>,
+    /// Optional content key identifier; never key material.
+    pub keyId: Option<Vec<u8>>,
+    /// Provider-specific key reference used during license exchange, such as an Apple skd URI or data URI.
+    pub keyUri: Option<String>,
+    /// Optional certificate bytes, at most 1048576; never a private device key.
+    pub serverCertificate: Option<Vec<u8>>,
+    /// Whether the provider supports a persistent license/session; the host may reject it when unsupported.
+    pub persistent: bool,
+}
+
+impl DrmDescriptor {
+    pub fn write(&self, w: &mut WireWriter) {
+        w.string(&self.keySystem);
+        w.optional(self.licenseUrl.as_deref(), |w, s| w.string(s));
+        w.list(&self.headers, |w, item| item.write(w));
+        w.optional(self.schemeIdUri.as_deref(), |w, s| w.string(s));
+        w.optional(self.initData.as_deref(), |w, b| w.bytes(b));
+        w.optional(self.keyId.as_deref(), |w, b| w.bytes(b));
+        w.optional(self.keyUri.as_deref(), |w, s| w.string(s));
+        w.optional(self.serverCertificate.as_deref(), |w, b| w.bytes(b));
+        w.bool(self.persistent);
+    }
+
+    pub fn read(r: &mut WireReader) -> Result<Self, WireError> {
+        Ok(Self {
+            keySystem: r.string()?,
+            licenseUrl: r.optional(|r| r.string())?,
+            headers: r.list(|r| Header::read(r))?,
+            schemeIdUri: r.optional(|r| r.string())?,
+            initData: r.optional(|r| r.bytes())?,
+            keyId: r.optional(|r| r.bytes())?,
+            keyUri: r.optional(|r| r.string())?,
+            serverCertificate: r.optional(|r| r.bytes())?,
+            persistent: r.bool()?,
+        })
+    }
+}
+
+/// DRM-aware audio resolution input. keySystems lists the host-supported identifiers in preference order.
+#[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]
+pub struct DrmResolveRequest {
+    /// Opaque, case-sensitive provider-local identity; preserve leading zeros and punctuation.
+    pub id: String,
+    /// Provider-defined requested quality key; do not report it as actual quality without verification.
+    pub quality: String,
+    /// 1..8 distinct host-supported key systems; the provider must not return a descriptor outside this list.
+    pub keySystems: Vec<String>,
+}
+
+impl DrmResolveRequest {
+    pub fn write(&self, w: &mut WireWriter) {
+        w.string(&self.id);
+        w.string(&self.quality);
+        w.list(&self.keySystems, |w, s| w.string(s));
+    }
+
+    pub fn read(r: &mut WireReader) -> Result<Self, WireError> {
+        Ok(Self {
+            id: r.string()?,
+            quality: r.string()?,
+            keySystems: r.list(|r| r.string())?,
+        })
+    }
+}
+
+/// One resolved media resource and its optional DRM descriptor; a null descriptor means the resource is clear.
+#[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]
+pub struct ResolvedMedia {
+    /// The resolved media resource.
+    pub resource: MediaResource,
+    /// Null only when the resource is clear; a protected resource requires a matching descriptor.
+    pub drm: Option<DrmDescriptor>,
+}
+
+impl ResolvedMedia {
+    pub fn write(&self, w: &mut WireWriter) {
+        self.resource.write(w);
+        w.optional(self.drm.as_ref(), |w, item| item.write(w));
+    }
+
+    pub fn read(r: &mut WireReader) -> Result<Self, WireError> {
+        Ok(Self {
+            resource: MediaResource::read(r)?,
+            drm: r.optional(|r| DrmDescriptor::read(r))?,
+        })
+    }
+}
+
+/// One host CDM challenge plus the opaque provider context needed to exchange it for a license.
+#[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]
+pub struct LicenseRequest {
+    /// Opaque, case-sensitive provider-local identity; preserve leading zeros and punctuation.
+    pub id: String,
+    /// Canonical host DRM identifier: widevine, playready, fairplay or clearkey.
+    pub keySystem: String,
+    /// Raw host CDM challenge bytes, at most 1048576; the provider performs any required encoding.
+    pub challenge: Vec<u8>,
+    /// Absolute provider license endpoint when direct HTTP exchange is possible; null when exchangeLicense is required.
+    pub licenseUrl: Option<String>,
+    /// Explicit headers; no implicit account Cookie or Authorization forwarding.
+    pub headers: Vec<Header>,
+    /// Provider-specific key reference used during license exchange, such as an Apple skd URI or data URI.
+    pub keyUri: Option<String>,
+}
+
+impl LicenseRequest {
+    pub fn write(&self, w: &mut WireWriter) {
+        w.string(&self.id);
+        w.string(&self.keySystem);
+        w.bytes(&self.challenge);
+        w.optional(self.licenseUrl.as_deref(), |w, s| w.string(s));
+        w.list(&self.headers, |w, item| item.write(w));
+        w.optional(self.keyUri.as_deref(), |w, s| w.string(s));
+    }
+
+    pub fn read(r: &mut WireReader) -> Result<Self, WireError> {
+        Ok(Self {
+            id: r.string()?,
+            keySystem: r.string()?,
+            challenge: r.bytes()?,
+            licenseUrl: r.optional(|r| r.string())?,
+            headers: r.list(|r| Header::read(r))?,
+            keyUri: r.optional(|r| r.string())?,
+        })
+    }
+}
+
+/// Opaque license bytes returned by the provider; never log, cache or expose them to UI code.
+#[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]
+pub struct LicenseResponse {
+    /// Opaque license response bytes; never a content key and never logged.
+    pub license: Vec<u8>,
+}
+
+impl LicenseResponse {
+    pub fn write(&self, w: &mut WireWriter) {
+        w.bytes(&self.license);
+    }
+
+    pub fn read(r: &mut WireReader) -> Result<Self, WireError> {
+        Ok(Self {
+            license: r.bytes()?,
+        })
+    }
+}
+
 /// Sanitized, categorized business failure; never include credentials or private request bodies.
 #[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]
 pub struct Failure {
@@ -291,7 +450,9 @@ impl IdRequest {
     }
 
     pub fn read(r: &mut WireReader) -> Result<Self, WireError> {
-        Ok(Self { id: r.string()? })
+        Ok(Self {
+            id: r.string()?,
+        })
     }
 }
 
@@ -404,7 +565,9 @@ impl Bytes {
     }
 
     pub fn read(r: &mut WireReader) -> Result<Self, WireError> {
-        Ok(Self { value: r.bytes()? })
+        Ok(Self {
+            value: r.bytes()?,
+        })
     }
 }
 
@@ -477,12 +640,12 @@ impl PagedIdRequest {
     }
 }
 
-/// A bounded recommendation/discovery selection, not offset pagination.
+/// A bounded recommendation/discovery selection, not offset pagination. mode selects daily or dailyStyle when the provider supports both.
 #[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]
 pub struct RecommendationsRequest {
     /// Requested item bound, 1..500; a response must not exceed it.
     pub limit: i32,
-    /// Provider-specific recommendation mode.
+    /// Provider-specific recommendation mode; daily is the compatibility default and dailyStyle selects the newer style-based daily feed.
     pub mode: String,
 }
 
@@ -500,11 +663,14 @@ impl RecommendationsRequest {
     }
 }
 
-/// A bounded personal-radio request with provider-defined mode selectors.
+/// A bounded personal-radio request. mode and subMode are provider-defined selectors; limit is the maximum number of tracks.
 #[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]
 pub struct FmModeRequest {
+    /// Provider-specific recommendation mode; daily is the compatibility default and dailyStyle selects the newer style-based daily feed.
     pub mode: String,
+    /// Optional provider-specific sub-mode for recommendation or personal-radio requests.
     pub subMode: String,
+    /// Requested item bound, 1..500; a response must not exceed it.
     pub limit: i32,
 }
 
@@ -610,7 +776,9 @@ impl UserRequest {
     }
 
     pub fn read(r: &mut WireReader) -> Result<Self, WireError> {
-        Ok(Self { id: r.string()? })
+        Ok(Self {
+            id: r.string()?,
+        })
     }
 }
 
@@ -1454,7 +1622,7 @@ fn country_code_from_native_extra_json(
         .ok_or(WireError::InvalidLength)
 }
 
-/// Named authentication workflow input; only fields relevant to action should be supplied.
+/// Named authentication workflow input; only fields relevant to action should be supplied. Phone actions may specify a calling-country code; omission preserves the provider's existing default.
 #[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]
 pub struct AuthActionRequest {
     /// One of AuthAction's documented action names; required fields depend on the selected flow.
@@ -1481,7 +1649,7 @@ pub struct AuthActionRequest {
     pub verifyId: Option<String>,
     /// Legacy authentication-only extension text, not a generic endpoint passthrough.
     pub extraJson: Option<String>,
-    /// Optional calling-country code for phone actions; omission preserves the provider default (86).
+    /// Optional digits-only calling-country code for login.phone or captcha.send, 1..4 digits without '+'. Omission preserves the provider default (86 for the existing NetEase flow).
     pub countryCode: Option<String>,
 }
 
@@ -3343,6 +3511,52 @@ impl EventPageRequest {
     }
 }
 
+/// Keyword and opaque continuation cursor for a page of visible posts.
+#[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]
+pub struct EventSearchRequest {
+    /// Search text, not an encoded query string.
+    pub keyword: String,
+    /// Requested item bound, 1..500; a response must not exceed it.
+    pub limit: i32,
+    /// Opaque continuation token. Preserve empty strings and punctuation; at most 4096 characters for extended operations.
+    pub cursor: Option<String>,
+}
+
+impl EventSearchRequest {
+    pub fn write(&self, w: &mut WireWriter) {
+        w.string(&self.keyword);
+        w.int(self.limit);
+        w.optional(self.cursor.as_deref(), |w, s| w.string(s));
+    }
+
+    pub fn read(r: &mut WireReader) -> Result<Self, WireError> {
+        Ok(Self {
+            keyword: r.string()?,
+            limit: r.int()?,
+            cursor: r.optional(|r| r.string())?,
+        })
+    }
+}
+
+/// Non-blank plain text for a post without a resource attachment, up to 140 Unicode code points.
+#[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]
+pub struct PublishEventRequest {
+    /// Plain text, never an upstream JSON message envelope.
+    pub text: String,
+}
+
+impl PublishEventRequest {
+    pub fn write(&self, w: &mut WireWriter) {
+        w.string(&self.text);
+    }
+
+    pub fn read(r: &mut WireReader) -> Result<Self, WireError> {
+        Ok(Self {
+            text: r.string()?,
+        })
+    }
+}
+
 /// User-scoped social-feed cursor input.
 #[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]
 pub struct UserEventRequest {
@@ -3471,9 +3685,7 @@ impl PlaylistUpdateRequest {
         w.string(&self.id);
         w.optional(self.name.as_deref(), |w, s| w.string(s));
         w.optional(self.description.as_deref(), |w, s| w.string(s));
-        w.optional(self.tags.as_deref(), |w, list| {
-            w.list(list, |w, s| w.string(s))
-        });
+        w.optional(self.tags.as_deref(), |w, list| w.list(list, |w, s| w.string(s)));
     }
 
     pub fn read(r: &mut WireReader) -> Result<Self, WireError> {
@@ -3670,7 +3882,9 @@ impl FollowCount {
     }
 
     pub fn read(r: &mut WireReader) -> Result<Self, WireError> {
-        Ok(Self { count: r.long()? })
+        Ok(Self {
+            count: r.long()?,
+        })
     }
 }
 
@@ -3706,7 +3920,9 @@ impl HistoryTracksRequest {
     }
 
     pub fn read(r: &mut WireReader) -> Result<Self, WireError> {
-        Ok(Self { date: r.string()? })
+        Ok(Self {
+            date: r.string()?,
+        })
     }
 }
 

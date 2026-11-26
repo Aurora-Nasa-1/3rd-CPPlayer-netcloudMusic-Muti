@@ -340,6 +340,15 @@ macro_rules! api_routes {
 fn register_routes(router: Router<AppState>) -> Router<AppState> {
     // 自动生成的标准路由（build.rs → api_routes_generated.rs）
     let router = { include!(concat!(env!("OUT_DIR"), "/api_routes_generated.rs")) };
+    let router = api_routes!(
+        router,
+        personal_fm_mode => "/personal/fm/mode",
+        fm_trash => "/fm/trash",
+        recommend_category_songs => "/recommend/category/songs",
+        recommend_category_configs => "/recommend/category/configs",
+        recommend_category_set => "/recommend/category/set",
+        recommend_category_set => "/recommend/category/config",
+    );
 
     // 文件上传路由（特殊签名，需要 multipart 处理）
     let router = router

@@ -20,13 +20,20 @@ async fn test_sdk_capabilities_dispatch() {
     reader.finish().expect("finish failed");
 
     assert_eq!(PROTOCOL_VERSION, 1);
-    assert_eq!(caps.supported.len(), all_capabilities().len());
-    assert_eq!(caps.supported.len(), 162);
+    assert_eq!(caps.supported.len(), all_capabilities().len() - 2);
+    assert_eq!(caps.supported.len(), 165);
+    assert!(!caps.supported.contains(&"tracks.resolveDrm".to_string()));
+    assert!(!caps.supported.contains(&"tracks.exchangeLicense".to_string()));
     assert!(caps.supported.contains(&"tracks.search".to_string()));
     assert!(caps.supported.contains(&"tracks.resolve".to_string()));
     assert!(caps.supported.contains(&"tracks.get".to_string()));
     assert!(caps.supported.contains(&"accounts.likes.page".to_string()));
     assert!(caps.supported.contains(&"social.likeResource".to_string()));
+    assert!(caps.supported.contains(&"social.events.search".to_string()));
+    assert!(caps.supported.contains(&"social.events.publish".to_string()));
+    assert!(caps.supported.contains(&"recommendations.personalFm".to_string()));
+    assert!(caps.supported.contains(&"recommendations.personalFmMode".to_string()));
+    assert!(caps.supported.contains(&"library.dislike".to_string()));
 }
 
 #[tokio::test]

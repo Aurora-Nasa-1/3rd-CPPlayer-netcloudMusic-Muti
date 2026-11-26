@@ -19,14 +19,16 @@ fn get_client() -> &'static ApiClient {
 }
 
 pub(crate) fn get_runtime() -> &'static Runtime {
-    TOKIO_RUNTIME.get_or_init(|| {
-        tokio::runtime::Builder::new_multi_thread()
-            .enable_all()
-            .worker_threads(4)
-            .thread_name("ncm-worker")
-            .build()
-            .expect("Failed to create Tokio runtime")
-    })
+    TOKIO_RUNTIME.get_or_init(build_runtime)
+}
+
+pub(crate) fn build_runtime() -> Runtime {
+    tokio::runtime::Builder::new_multi_thread()
+        .enable_all()
+        .worker_threads(2)
+        .thread_name("ncm-worker")
+        .build()
+        .expect("Failed to create Tokio runtime")
 }
 
 // ============================================================

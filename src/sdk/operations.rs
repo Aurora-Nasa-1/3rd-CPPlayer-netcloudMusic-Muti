@@ -172,6 +172,10 @@ pub mod tags {
     pub const GETUSERCOMMENTHISTORY: i32 = 165;
     pub const GETLIKELISTPAGE: i32 = 166;
     pub const LIKERESOURCE: i32 = 167;
+    pub const RESOLVEDRM: i32 = 168;
+    pub const EXCHANGELICENSE: i32 = 169;
+    pub const SEARCHEVENTS: i32 = 171;
+    pub const PUBLISHEVENT: i32 = 172;
 }
 
 pub mod capabilities {
@@ -222,6 +226,7 @@ pub mod capabilities {
     pub const POSTCOMMENT: &str = "comments.post";
     pub const LIKECOMMENT: &str = "comments.like";
     pub const GETPERSONALFM: &str = "recommendations.personalFm";
+    pub const GETPERSONALFMMODE: &str = "recommendations.personalFmMode";
     pub const GETSIMILARSONGS: &str = "recommendations.similarSongs";
     pub const GETINTELLIGENCESONGS: &str = "recommendations.intelligenceSongs";
     pub const SUBSCRIBEALBUM: &str = "albums.subscribe";
@@ -337,6 +342,10 @@ pub mod capabilities {
     pub const GETUSERCOMMENTHISTORY: &str = "comments.userHistory";
     pub const GETLIKELISTPAGE: &str = "accounts.likes.page";
     pub const LIKERESOURCE: &str = "social.likeResource";
+    pub const RESOLVEDRM: &str = "tracks.resolveDrm";
+    pub const EXCHANGELICENSE: &str = "tracks.exchangeLicense";
+    pub const SEARCHEVENTS: &str = "social.events.search";
+    pub const PUBLISHEVENT: &str = "social.events.publish";
 }
 
 /// Returns all capabilities supported by this SDK version.
@@ -389,6 +398,7 @@ pub fn all_capabilities() -> Vec<&'static str> {
         capabilities::POSTCOMMENT,
         capabilities::LIKECOMMENT,
         capabilities::GETPERSONALFM,
+        capabilities::GETPERSONALFMMODE,
         capabilities::GETSIMILARSONGS,
         capabilities::GETINTELLIGENCESONGS,
         capabilities::SUBSCRIBEALBUM,
@@ -504,5 +514,9 @@ pub fn all_capabilities() -> Vec<&'static str> {
         capabilities::GETUSERCOMMENTHISTORY,
         capabilities::GETLIKELISTPAGE,
         capabilities::LIKERESOURCE,
+        capabilities::RESOLVEDRM,
+        capabilities::EXCHANGELICENSE,
+        capabilities::SEARCHEVENTS,
+        capabilities::PUBLISHEVENT,
     ]
 }

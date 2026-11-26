@@ -396,9 +396,12 @@ pub fn eapi(url: &str, object: &serde_json::Value) -> HashMap<String, String> {
 
 /// eapi 响应解密
 pub fn eapi_res_decrypt(encrypted_hex: &str) -> Option<serde_json::Value> {
-    let decrypted = aes_ecb_decrypt_hex(encrypted_hex, EAPI_KEY).ok()?;
-    let text = String::from_utf8(decrypted).ok()?;
-    serde_json::from_str(&text).ok()
+    eapi_res_decrypt_bytes(&hex::decode(encrypted_hex).ok()?)
+}
+
+pub(crate) fn eapi_res_decrypt_bytes(encrypted: &[u8]) -> Option<serde_json::Value> {
+    let decrypted = aes128_ecb_decrypt_bytes(encrypted, EAPI_KEY).ok()?;
+    serde_json::from_slice(&decrypted).ok()
 }
 
 /// eapi 请求解密（调试用）

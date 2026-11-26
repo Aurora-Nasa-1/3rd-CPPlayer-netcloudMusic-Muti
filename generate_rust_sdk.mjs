@@ -121,6 +121,48 @@ use serde::{Deserialize, Serialize};
 `;
 
 for (const [name, fields] of Object.entries(schema.records)) {
+  if (name === "AuthActionRequest") {
+    modelsCode += `/// Map the typed SDK field through Native v1's existing auth-only extraJson slot.
+/// The host's NativeWireCodec performs the same bridge to preserve positional compatibility.
+fn native_auth_extra_json(extra_json: Option<&str>, country_code: Option<&str>) -> Option<String> {
+    let Some(country_code) = country_code else {
+        return extra_json.map(String::from);
+    };
+    let mut object = extra_json
+        .and_then(|raw| serde_json::from_str::<serde_json::Value>(raw).ok())
+        .and_then(|value| value.as_object().cloned())
+        .unwrap_or_default();
+    object.insert(
+        "countryCode".to_string(),
+        serde_json::Value::String(country_code.to_string()),
+    );
+    Some(serde_json::Value::Object(object).to_string())
+}
+
+/// Decode the Native v1 bridge into the typed request field at the wire boundary.
+fn country_code_from_native_extra_json(
+    extra_json: Option<&str>,
+) -> Result<Option<String>, WireError> {
+    let Some(raw) = extra_json else {
+        return Ok(None);
+    };
+    let Ok(value) = serde_json::from_str::<serde_json::Value>(raw) else {
+        return Ok(None);
+    };
+    let Some(value) = value
+        .get("countryCode")
+        .or_else(|| value.get("countrycode"))
+    else {
+        return Ok(None);
+    };
+    value
+        .as_str()
+        .map(|code| Some(code.to_string()))
+        .ok_or(WireError::InvalidLength)
+}
+
+`;
+  }
   const doc = recordDocs[name] ? `/// ${recordDocs[name]}\n` : "";
   modelsCode += `${doc}#[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]\npub struct ${name} {\n`;
   for (const [fname, ftype] of Object.entries(fields)) {
@@ -133,25 +175,142 @@ for (const [name, fields] of Object.entries(schema.records)) {
 
   // impl write & read
   modelsCode += `impl ${name} {\n`;
-  modelsCode += `    pub fn write(&self, w: &mut WireWriter) {\n`;
-  for (const [fname, ftype] of Object.entries(fields)) {
-    const rfname = rustFieldName(fname);
-    modelsCode += `        ${rustWrite(ftype, `self.${rfname}`)}\n`;
-  }
-  modelsCode += `    }\n\n`;
+  if (name === "AuthActionRequest") {
+    modelsCode += `    pub fn write(&self, w: &mut WireWriter) {
+        // Keep the Native v1 positional layout stable; the host sends typed
+        // countryCode through this auth-only bridge until the wire version changes.
+        let extra_json =
+            native_auth_extra_json(self.extraJson.as_deref(), self.countryCode.as_deref());
+        w.string(&self.action);
+        w.optional(self.email.as_deref(), |w, s| w.string(s));
+        w.optional(self.phone.as_deref(), |w, s| w.string(s));
+        w.optional(self.password.as_deref(), |w, s| w.string(s));
+        w.optional(self.captcha.as_deref(), |w, s| w.string(s));
+        w.bool(self.md5);
+        w.optional(self.imageCaptcha.as_deref(), |w, s| w.string(s));
+        w.optional(self.challengeCookie.as_deref(), |w, s| w.string(s));
+        w.optional(self.key.as_deref(), |w, s| w.string(s));
+        w.optional(self.sessionId.as_deref(), |w, s| w.string(s));
+        w.optional(self.verifyId.as_deref(), |w, s| w.string(s));
+        w.optional(extra_json.as_deref(), |w, s| w.string(s));
+    }
 
-  modelsCode += `    pub fn read(r: &mut WireReader) -> Result<Self, WireError> {\n`;
-  modelsCode += `        Ok(Self {\n`;
-  for (const [fname, ftype] of Object.entries(fields)) {
-    const rfname = rustFieldName(fname);
-    modelsCode += `            ${rfname}: ${rustRead(ftype)},\n`;
+    pub fn read(r: &mut WireReader) -> Result<Self, WireError> {
+        let action = r.string()?;
+        let email = r.optional(|r| r.string())?;
+        let phone = r.optional(|r| r.string())?;
+        let password = r.optional(|r| r.string())?;
+        let captcha = r.optional(|r| r.string())?;
+        let md5 = r.bool()?;
+        let imageCaptcha = r.optional(|r| r.string())?;
+        let challengeCookie = r.optional(|r| r.string())?;
+        let key = r.optional(|r| r.string())?;
+        let sessionId = r.optional(|r| r.string())?;
+        let verifyId = r.optional(|r| r.string())?;
+        let extraJson = r.optional(|r| r.string())?;
+        let countryCode = country_code_from_native_extra_json(extraJson.as_deref())?;
+        Ok(Self {
+            action,
+            email,
+            phone,
+            password,
+            captcha,
+            md5,
+            imageCaptcha,
+            challengeCookie,
+            key,
+            sessionId,
+            verifyId,
+            extraJson,
+            countryCode,
+        })
+    }
+`;
+  } else {
+    modelsCode += `    pub fn write(&self, w: &mut WireWriter) {\n`;
+    for (const [fname, ftype] of Object.entries(fields)) {
+      const rfname = rustFieldName(fname);
+      modelsCode += `        ${rustWrite(ftype, `self.${rfname}`)}\n`;
+    }
+    modelsCode += `    }\n\n`;
+
+    modelsCode += `    pub fn read(r: &mut WireReader) -> Result<Self, WireError> {\n`;
+    modelsCode += `        Ok(Self {\n`;
+    for (const [fname, ftype] of Object.entries(fields)) {
+      const rfname = rustFieldName(fname);
+      modelsCode += `            ${rfname}: ${rustRead(ftype)},\n`;
+    }
+    modelsCode += `        })\n`;
+    modelsCode += `    }\n`;
   }
-  modelsCode += `        })\n`;
-  modelsCode += `    }\n`;
   modelsCode += `}\n\n`;
 }
 
-writeFileSync(resolve(root, "src/sdk/models.rs"), modelsCode, "utf8");
+modelsCode += `#[cfg(test)]
+mod auth_action_request_wire_tests {
+    use super::*;
+
+    fn encode_then_read(request: &AuthActionRequest) -> Result<AuthActionRequest, WireError> {
+        let mut writer = WireWriter::new();
+        request.write(&mut writer);
+        let bytes = writer.finish();
+        let mut reader = WireReader::new(&bytes)?;
+        let decoded = AuthActionRequest::read(&mut reader)?;
+        reader.finish()?;
+        Ok(decoded)
+    }
+
+    #[test]
+    fn typed_country_code_round_trips_through_native_v1_extra_json_slot() {
+        let request = AuthActionRequest {
+            action: "login.phone".to_string(),
+            extraJson: Some(r#"{"source":"legacy"}"#.to_string()),
+            countryCode: Some("44".to_string()),
+            ..Default::default()
+        };
+
+        let decoded = encode_then_read(&request).expect("valid Native v1 wire payload");
+        assert_eq!(decoded.countryCode.as_deref(), Some("44"));
+        let extension: serde_json::Value =
+            serde_json::from_str(decoded.extraJson.as_deref().unwrap()).unwrap();
+        assert_eq!(extension["countryCode"], "44");
+        assert_eq!(extension["source"], "legacy");
+    }
+
+    #[test]
+    fn legacy_native_host_bridge_decodes_to_typed_country_code() {
+        let request = AuthActionRequest {
+            action: "captcha.send".to_string(),
+            extraJson: Some(r#"{"countryCode":"65"}"#.to_string()),
+            ..Default::default()
+        };
+
+        let decoded = encode_then_read(&request).expect("valid legacy bridge payload");
+        assert_eq!(decoded.countryCode.as_deref(), Some("65"));
+        assert_eq!(decoded.extraJson, request.extraJson);
+    }
+
+    #[test]
+    fn non_string_country_code_bridge_is_rejected_by_wire_decoder() {
+        let request = AuthActionRequest {
+            action: "login.phone".to_string(),
+            extraJson: Some(r#"{"countryCode":44}"#.to_string()),
+            ..Default::default()
+        };
+        let mut writer = WireWriter::new();
+        request.write(&mut writer);
+        let bytes = writer.finish();
+        let mut reader = WireReader::new(&bytes).unwrap();
+
+        assert_eq!(
+            AuthActionRequest::read(&mut reader).unwrap_err(),
+            WireError::InvalidLength
+        );
+    }
+}
+`;
+
+writeFileSync(resolve(root, "src/sdk/models.rs"), modelsCode.trimEnd() + "\n", "utf8");
 console.log("src/sdk/models.rs written.");
 
 // Generate operations.rs

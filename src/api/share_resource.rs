@@ -14,10 +14,12 @@ impl ApiClient {
             "msg": query.get_or("msg", ""),
             "id": query.get_or("id", "")
         });
+        let mut options = query.to_option(CryptoType::Xeapi);
+        options.check_token = true;
         self.request(
             "/api/share/friends/resource",
             data,
-            query.to_option(CryptoType::default()),
+            options,
         )
         .await
     }

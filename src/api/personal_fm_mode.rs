@@ -9,15 +9,21 @@ impl ApiClient {
     /// 私人 FM 模式
     /// 对应 /personal/fm/mode
     pub async fn personal_fm_mode(&self, query: &Query) -> Result<ApiResponse> {
-        let data = json!({
+        let mut data = json!({
             "mode": query.get_or("mode", "DEFAULT"),
-            "subMode": query.get_or("submode", ""),
-            "limit": query.get_or("limit", "3").parse::<i64>().unwrap_or(3)
+            "limit": query.get_i64("limit", 3).max(1)
         });
+        if let Some(sub_mode) = query
+            .get("submode")
+            .or_else(|| query.get("subMode"))
+            .filter(|value| !value.is_empty())
+        {
+            data["subMode"] = json!(sub_mode);
+        }
         self.request(
             "/api/v1/radio/get",
             data,
-            query.to_option(CryptoType::default()),
+            query.to_option(CryptoType::Eapi),
         )
         .await
     }

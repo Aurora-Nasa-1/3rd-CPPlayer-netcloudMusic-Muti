@@ -14,7 +14,7 @@ impl ApiClient {
             "id": id
         });
         self.request(
-            &format!("/api/artist/head/info/get?id={}", id),
+            "/api/artist/head/info/get",
             data,
             query.to_option(CryptoType::default()),
         )

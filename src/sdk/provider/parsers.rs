@@ -127,19 +127,16 @@ fn id_string(value: &Value) -> Option<String> {
 /// The event list endpoints carry the payload as a JSON *string* under
 /// `json`, e.g. `{"msg":"...","pics":[{"originUrl":"..."}],"song":{...}}`.
 /// Flatten only display-safe fields; never expose the raw envelope.
-fn parse_event_payload(json_field: &Value) -> EventPayload {
-    let raw = json_field.as_str().unwrap_or_default();
-    let payload: Value = if raw.trim_start().starts_with('{') {
-        serde_json::from_str(raw).unwrap_or(Value::Null)
-    } else {
-        Value::Null
-    };
+fn parse_event_payload(event: &Value) -> EventPayload {
+    let json_field = &event["json"];
+    let decoded = json_field.as_str().and_then(|raw| serde_json::from_str::<Value>(raw).ok());
+    let payload = decoded.as_ref().or_else(|| json_field.is_object().then_some(json_field))
+        .unwrap_or(&Value::Null);
 
     let text = text_of(payload.get("msg").unwrap_or(&Value::Null)).unwrap_or_default();
 
-    let image_urls = payload
-        .get("pics")
-        .and_then(|p| p.as_array())
+    let image_urls = event["pics"].as_array().filter(|pics| !pics.is_empty())
+        .or_else(|| payload["pics"].as_array())
         .map(|arr| {
             arr.iter()
                 .filter_map(|pic| {
@@ -222,11 +219,20 @@ pub fn parse_event(ev: &Value) -> SocialEvent {
     parse_event_with_forward(ev)
 }
 
+pub(super) fn event_id(ev: &Value) -> Option<String> {
+    let id = id_string(&ev["id"])?;
+    let thread = ev["info"]["threadId"].as_str().or_else(|| ev["threadId"].as_str());
+    Some(match thread.filter(|value| value.starts_with("A_EV_2_")) {
+        Some(thread) => format!("{id}~{thread}"),
+        None => id,
+    })
+}
+
 fn parse_event_origin(ev: &Value) -> EventOrigin {
-    let payload = parse_event_payload(&ev["json"]);
+    let payload = parse_event_payload(ev);
     let info = &ev["info"];
     EventOrigin {
-        id: id_string(&ev["id"]).unwrap_or_default(),
+        id: event_id(ev).unwrap_or_default(),
         user: parse_social_user(&ev["user"]),
         text: payload.text,
         publishedAtEpochMs: ev["eventTime"].as_i64().unwrap_or(0),
@@ -260,10 +266,10 @@ fn parse_event_origin(ev: &Value) -> EventOrigin {
 }
 
 fn parse_event_with_forward(ev: &Value) -> SocialEvent {
-    let payload = parse_event_payload(&ev["json"]);
+    let payload = parse_event_payload(ev);
     let info = &ev["info"];
     SocialEvent {
-        id: id_string(&ev["id"]).unwrap_or_default(),
+        id: event_id(ev).unwrap_or_default(),
         user: parse_social_user(&ev["user"]),
         text: payload.text,
         publishedAtEpochMs: ev["eventTime"].as_i64().unwrap_or(0),

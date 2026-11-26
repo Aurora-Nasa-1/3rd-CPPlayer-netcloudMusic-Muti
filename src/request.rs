@@ -113,14 +113,30 @@ pub struct ApiClient {
 impl ApiClient {
     /// 创建新的 API 客户端
     pub fn new(cookie: Option<String>) -> Self {
-        let client = reqwest::Client::builder()
-            // 宿主单次 op 有 15s 死线，且 JNI invoke 串行 —— 单请求超时必须明显
-            // 小于死线，否则一次网络挂死会拖满死线并堵死整个会话。
-            .connect_timeout(std::time::Duration::from_secs(4))
-            .timeout(std::time::Duration::from_secs(6))
+        let client = Self::client_builder()
             .build()
             .expect("Failed to create HTTP client");
+        Self::with_transport(cookie, client)
+    }
 
+    /// JNI / C ABI 会话共用传输层；Cookie 和设备状态继续保存在各自的客户端。
+    #[cfg(feature = "jni")]
+    pub(crate) fn native_transport() -> reqwest::Client {
+        Self::client_builder()
+            .pool_max_idle_per_host(2)
+            .pool_idle_timeout(std::time::Duration::from_secs(30))
+            .build()
+            .expect("Failed to create native HTTP transport")
+    }
+
+    fn client_builder() -> reqwest::ClientBuilder {
+        // 宿主单次调用有 15s 死线；单个 HTTP 请求必须更早超时。
+        reqwest::Client::builder()
+            .connect_timeout(std::time::Duration::from_secs(4))
+            .timeout(std::time::Duration::from_secs(6))
+    }
+
+    pub(crate) fn with_transport(cookie: Option<String>, client: reqwest::Client) -> Self {
         Self {
             client,
             cookie,
@@ -134,20 +150,12 @@ impl ApiClient {
     pub fn with_proxy(cookie: Option<String>, proxy_url: &str) -> Result<Self> {
         let proxy = reqwest::Proxy::all(proxy_url)
             .map_err(|e| NcmError::Unknown(format!("Invalid proxy URL: {}", e)))?;
-        let client = reqwest::Client::builder()
+        let client = Self::client_builder()
             .proxy(proxy)
-            .connect_timeout(std::time::Duration::from_secs(4))
-            .timeout(std::time::Duration::from_secs(6))
             .build()
             .map_err(NcmError::Http)?;
 
-        Ok(Self {
-            client,
-            cookie,
-            anonymous_token: None,
-            device_id: None,
-            xeapi_key_state: Arc::new(tokio::sync::Mutex::new(None)),
-        })
+        Ok(Self::with_transport(cookie, client))
     }
 
     /// 设置 cookie
@@ -170,6 +178,21 @@ impl ApiClient {
     /// 获取当前设备 ID（自定义优先，否则使用全局默认）
     fn get_device_id(&self) -> &str {
         self.device_id.as_deref().unwrap_or(&DEVICE_ID)
+    }
+
+    async fn get_check_token_v3(&self) -> Result<Option<String>> {
+        // The share endpoint uses a fresh v3 token. The registration endpoint
+        // does not need the user's credentials and its response is JSONP.
+        const URL: &str = "https://ac.dun.163yun.com/v3/b?pn=YD00000558929251";
+        let body = self.client.get(URL)
+            .timeout(std::time::Duration::from_secs(2))
+            .send().await?.error_for_status()?.text().await?;
+        let Some(json) = body.trim().strip_prefix("null(")
+            .and_then(|value| value.strip_suffix(')')) else { return Ok(None) };
+        let value: Value = serde_json::from_str(json)?;
+        Ok(value.get(2).and_then(Value::as_str)
+            .filter(|token| !token.is_empty() && value[0].as_i64() == Some(200))
+            .map(str::to_owned))
     }
 
     async fn get_xeapi_public_key(&self, device_id: &str) -> Result<crypto::XeapiPublicKey> {
@@ -479,7 +502,9 @@ impl ApiClient {
                     headers.insert("x-music-u", header_value(music_u));
                 }
                 if options.check_token {
-                    headers.insert("X-antiCheatToken", header_value(CHECK_TOKEN));
+                    if let Ok(Some(token)) = self.get_check_token_v3().await {
+                        headers.insert("X-antiCheatToken", header_value(&token));
+                    }
                 }
                 headers.insert(COOKIE, header_value(&cookie_obj_to_string(&cookie_map)));
 
@@ -683,19 +708,18 @@ impl ApiClient {
         let e_r = options.e_r.unwrap_or(false);
         let status_code = response.status().as_u16() as i64;
 
+        let bytes = response.bytes().await?;
+        let parse_plain = || {
+            let json_bytes = bytes.strip_prefix(b"\xEF\xBB\xBF").unwrap_or(&bytes);
+            serde_json::from_slice(json_bytes)
+                .unwrap_or_else(|_| Value::String(String::from_utf8_lossy(json_bytes).into_owned()))
+        };
         let body: Value = if crypto_type == CryptoType::Eapi && e_r {
-            let bytes = response.bytes().await?;
-            let hex_str = hex::encode_upper(&bytes);
-            crypto::eapi_res_decrypt(&hex_str).unwrap_or(Value::Null)
+            crypto::eapi_res_decrypt_bytes(&bytes).unwrap_or_else(parse_plain)
         } else if crypto_type == CryptoType::Xeapi {
-            let bytes = response.bytes().await?;
-            crypto::xeapi_res_decrypt(&bytes).unwrap_or_else(|| {
-                let text = String::from_utf8_lossy(&bytes).into_owned();
-                serde_json::from_str(&text).unwrap_or(Value::String(text))
-            })
+            crypto::xeapi_res_decrypt(&bytes).unwrap_or_else(parse_plain)
         } else {
-            let text = response.text().await?;
-            serde_json::from_str(&text).unwrap_or(Value::String(text))
+            parse_plain()
         };
 
         let mut status = body

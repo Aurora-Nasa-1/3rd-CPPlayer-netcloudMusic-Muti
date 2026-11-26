@@ -35,6 +35,15 @@ impl NeteaseSdkProvider {
         _settings: Option<String>,
     ) -> Self {
         let client = ApiClient::new(credential.clone());
+        Self::with_client(provider_id, account_id, credential, client)
+    }
+
+    pub(crate) fn with_client(
+        provider_id: String,
+        account_id: String,
+        credential: Option<String>,
+        client: ApiClient,
+    ) -> Self {
         Self {
             client,
             provider_id,
@@ -84,7 +93,9 @@ impl NeteaseSdkProvider {
         match operation {
             tags::CAPABILITIES => {
                 let caps = Capabilities {
-                    supported: all_capabilities().into_iter().map(String::from).collect(),
+                    supported: all_capabilities().into_iter()
+                        .filter(|cap| !["tracks.resolveDrm", "tracks.exchangeLicense"].contains(cap))
+                        .map(String::from).collect(),
                 };
                 let mut w = WireWriter::new();
                 caps.write(&mut w);
@@ -1226,6 +1237,26 @@ impl NeteaseSdkProvider {
                     message: format!("Wire decode error: {}", e),
                 })?;
                 let res = social::get_user_events(&self.client, req).await?;
+                let mut w = WireWriter::new();
+                res.write(&mut w);
+                Ok(w.finish())
+            }
+            tags::SEARCHEVENTS => {
+                let req = EventSearchRequest::read(&mut r).map_err(|e| Failure {
+                    category: "Runtime".to_string(),
+                    message: format!("Wire decode error: {}", e),
+                })?;
+                let res = social::search_events(&self.client, req).await?;
+                let mut w = WireWriter::new();
+                res.write(&mut w);
+                Ok(w.finish())
+            }
+            tags::PUBLISHEVENT => {
+                let req = PublishEventRequest::read(&mut r).map_err(|e| Failure {
+                    category: "Runtime".to_string(),
+                    message: format!("Wire decode error: {}", e),
+                })?;
+                let res = social::publish_event(&self.client, req).await?;
                 let mut w = WireWriter::new();
                 res.write(&mut w);
                 Ok(w.finish())

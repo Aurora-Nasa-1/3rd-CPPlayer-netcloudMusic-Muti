@@ -42,4 +42,24 @@ impl ApiClient {
         )
         .await
     }
+
+    pub async fn recommend_category_set(&self, query: &Query) -> Result<ApiResponse> {
+        use crate::error::NcmError;
+
+        let category_id = query.get("category")
+            .or_else(|| query.get("categoryId"))
+            .and_then(|value| value.parse::<i64>().ok())
+            .ok_or_else(|| NcmError::InvalidParam("category is required".into()))?;
+        let tag_ids = query.get_or("tags", "")
+            .split(',')
+            .map(|value| value.trim().parse::<i64>())
+            .collect::<std::result::Result<Vec<_>, _>>()
+            .map_err(|_| NcmError::InvalidParam("tags must be comma-separated IDs".into()))?;
+        self.request(
+            "/api/homepage/daily/song/tag/save",
+            json!({"tags": json!({"tagIds": tag_ids, "categoryId": category_id}).to_string()}),
+            query.to_option(CryptoType::Xeapi),
+        )
+        .await
+    }
 }

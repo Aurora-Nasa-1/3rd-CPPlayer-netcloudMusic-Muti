@@ -4,14 +4,37 @@
 use super::models::Failure;
 use super::provider::NeteaseSdkProvider;
 use super::wire::WireWriter;
-use crate::util::jni::get_runtime;
+use crate::request::ApiClient;
+use crate::util::jni::build_runtime;
 use jni::objects::{JByteArray, JClass, JString};
 use jni::sys::{jbyteArray, jint, jlong};
 use jni::JNIEnv;
-use std::sync::Arc;
+use std::sync::{Arc, Mutex, Weak};
+use tokio::runtime::Runtime;
+
+struct NativeRuntime {
+    transport: reqwest::Client,
+    runtime: Runtime,
+}
+
+// No strong process-global reference: C ABI may unload the library after the last close.
+static NATIVE_RUNTIME: Mutex<Weak<NativeRuntime>> = Mutex::new(Weak::new());
+
+fn acquire_native_runtime() -> Arc<NativeRuntime> {
+    let mut shared = NATIVE_RUNTIME.lock().unwrap();
+    shared.upgrade().unwrap_or_else(|| {
+        let native = Arc::new(NativeRuntime {
+            transport: ApiClient::native_transport(),
+            runtime: build_runtime(),
+        });
+        *shared = Arc::downgrade(&native);
+        native
+    })
+}
 
 pub struct NativeSessionHandle {
     pub provider: Arc<NeteaseSdkProvider>,
+    native: Arc<NativeRuntime>,
 }
 
 /// 建会话。JNI 与 C ABI 共用；入参是两条 ABI 各自解好的字符串。
@@ -19,10 +42,12 @@ pub(crate) fn create_session_handle(
     pid: String,
     aid: String,
     cred: Option<String>,
-    sett: Option<String>,
+    _settings: Option<String>,
 ) -> jlong {
-    let provider = Arc::new(NeteaseSdkProvider::new(pid, aid, cred, sett));
-    let session = Box::new(NativeSessionHandle { provider });
+    let native = acquire_native_runtime();
+    let client = ApiClient::with_transport(cred.clone(), native.transport.clone());
+    let provider = Arc::new(NeteaseSdkProvider::with_client(pid, aid, cred, client));
+    let session = Box::new(NativeSessionHandle { provider, native });
     Box::into_raw(session) as jlong
 }
 
@@ -34,7 +59,7 @@ pub(crate) fn invoke_session(handle: jlong, operation: jint, in_bytes: &[u8]) ->
     }
     let session = unsafe { &*(handle as *const NativeSessionHandle) };
     let provider = session.provider.clone();
-    let rt = get_runtime();
+    let rt = &session.native.runtime;
     let result: Result<Vec<u8>, Failure> =
         rt.block_on(async move { provider.dispatch(operation as i32, in_bytes).await });
 
@@ -68,9 +93,14 @@ pub(crate) fn close_session(handle: jlong) {
     if handle == 0 {
         return;
     }
-    unsafe {
-        let _ = Box::from_raw(handle as *mut NativeSessionHandle);
+    let session = unsafe { Box::from_raw(handle as *mut NativeSessionHandle) };
+    let mut shared = NATIVE_RUNTIME.lock().unwrap();
+    if Arc::strong_count(&session.native) == 1 {
+        *shared = Weak::new();
+        // This is the last session: wait for Tokio to stop before returning to the host.
+        drop(shared);
     }
+    drop(session);
 }
 
 // ------------------------------------------------------------

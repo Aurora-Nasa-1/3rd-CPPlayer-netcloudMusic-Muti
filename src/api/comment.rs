@@ -18,10 +18,7 @@ impl ApiClient {
             _ => "add",
         };
         let resource_type = query.get_or("type", "0");
-        let thread_id = crate::util::config::RESOURCE_TYPE_MAP
-            .get(resource_type.as_str())
-            .map(|prefix| format!("{}{}", prefix, query.get_or("id", "0")))
-            .unwrap_or_default();
+        let thread_id = query.comment_thread_id(&resource_type);
         let mut data = json!({
             "threadId": thread_id
         });

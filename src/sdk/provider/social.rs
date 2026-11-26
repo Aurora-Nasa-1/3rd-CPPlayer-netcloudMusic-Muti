@@ -1,7 +1,7 @@
 //! Comments, Social feeds, Direct Messaging, Notifications, Calendar, and Listen Together.
 
 use super::parsers::{
-    comment_sort_sdk, comment_sort_upstream, comment_type_code, extract_message_text, ncm_err,
+    comment_sort_sdk, comment_sort_upstream, comment_type_code, event_id, extract_message_text, ncm_err,
     parse_comment, parse_event, parse_social_user,
 };
 use crate::api::Query;
@@ -23,8 +23,20 @@ fn runtime(message: &str) -> Failure {
     }
 }
 
-/// Resolve a typed social resource to the upstream thread prefix used by
-/// resource likes and comments. Event IDs carry the `A_EV_2_` thread form.
+fn event_thread_id(id: &str) -> String {
+    if let Some((_, thread)) = id.split_once('~') {
+        if thread.starts_with("A_EV_2_") {
+            return thread.to_owned();
+        }
+    }
+    if id.starts_with("A_EV_2_") { id.to_owned() } else { format!("A_EV_2_{id}") }
+}
+
+fn raw_event_id(id: &str) -> &str {
+    id.split_once('~').map_or(id, |(raw, _)| raw)
+}
+
+/// Resolve a typed social resource to its upstream interaction thread.
 fn social_thread_id(kind: &str, id: &str) -> Result<String, Failure> {
     let prefix = match kind {
         "song" | "music" | "track" => "R_SO_4_",
@@ -33,7 +45,7 @@ fn social_thread_id(kind: &str, id: &str) -> Result<String, Failure> {
         "album" => "R_AL_3_",
         "dj" | "radio" => "A_DJ_1_",
         "video" => "R_VI_62_",
-        "event" => "A_EV_2_",
+        "event" => return Ok(event_thread_id(id)),
         "digitalAlbum" => "A_DR_14_",
         other => {
             return Err(runtime(&format!(
@@ -74,7 +86,7 @@ async fn comments_via_legacy(
         "5" => client.comment_video(&q).await,
         "6" => {
             q.params
-                .insert("threadId".to_string(), format!("A_EV_2_{}", id));
+                .insert("threadId".to_string(), event_thread_id(id));
             client.comment_event(&q).await
         }
         _ => {
@@ -98,8 +110,11 @@ async fn comments_via_new(
     sort_type: i64,
 ) -> Result<serde_json::Value, Failure> {
     let mut q = Query::new();
-    q.params.insert("id".to_string(), id.to_string());
+    q.params.insert("id".to_string(), if code == "6" { raw_event_id(id) } else { id }.to_string());
     q.params.insert("type".to_string(), code.to_string());
+    if code == "6" {
+        q.params.insert("threadId".into(), event_thread_id(id));
+    }
     q.params.insert("limit".to_string(), limit.to_string());
     q.params.insert("pageNo".to_string(), "1".to_string());
     q.params.insert("pageSize".to_string(), limit.to_string());
@@ -194,8 +209,11 @@ pub async fn get_floor_comments(
         "parentCommentId".to_string(),
         req.parentCommentId.to_string(),
     );
-    q.params.insert("id".to_string(), req.id);
     q.params.insert("type".to_string(), code.to_string());
+    if code == "6" {
+        q.params.insert("threadId".into(), event_thread_id(&req.id));
+    }
+    q.params.insert("id".to_string(), req.id);
     q.params.insert("limit".to_string(), req.limit.to_string());
     q.params.insert("time".to_string(), req.time.to_string());
 
@@ -235,6 +253,9 @@ pub async fn post_comment(
         .to_string(),
     );
     q.params.insert("type".to_string(), code.to_string());
+    if code == "6" {
+        q.params.insert("threadId".into(), event_thread_id(&req.id));
+    }
     q.params.insert("id".to_string(), req.id);
     q.params.insert("content".to_string(), req.content);
     if let Some(comment_id) = req.replyToCommentId {
@@ -269,6 +290,9 @@ pub async fn like_comment(
     );
     q.params.insert("type".to_string(), code.to_string());
 
+    if code == "6" {
+        q.params.insert("threadId".into(), event_thread_id(&req.id));
+    }
     let res = client.comment_like(&q).await.map_err(ncm_err)?;
 
     let code = res.body["code"].as_i64().unwrap_or(0);
@@ -291,6 +315,9 @@ pub async fn delete_comment(
     q.params
         .insert("commentId".to_string(), req.commentId.to_string());
 
+    if code == "6" {
+        q.params.insert("threadId".into(), event_thread_id(&req.id));
+    }
     let res = client.comment(&q).await.map_err(ncm_err)?;
 
     let code = res.body["code"].as_i64().unwrap_or(0);
@@ -1074,6 +1101,60 @@ pub async fn get_user_events(
     Ok(event_page_from_request(&res.body, "events"))
 }
 
+pub async fn search_events(
+    client: &ApiClient,
+    req: EventSearchRequest,
+) -> Result<EventPage, Failure> {
+    let offset = match req.cursor {
+        Some(cursor) => cursor
+            .parse::<i64>()
+            .ok()
+            .filter(|offset| *offset >= 0)
+            .ok_or_else(|| runtime("Invalid event search cursor"))?,
+        None => 0,
+    };
+    let keyword = req.keyword.trim();
+    if keyword.is_empty() || !(1..=100).contains(&req.limit) {
+        return Err(runtime("Event search requires a keyword and a valid limit"));
+    }
+    let mut q = Query::new();
+    q.params.insert("keyword".into(), keyword.into());
+    q.params.insert("limit".into(), req.limit.to_string());
+    q.params.insert("offset".into(), offset.to_string());
+    let res = client.event_search(&q).await.map_err(ncm_err)?;
+    let body = &res.body;
+    let (container, events) = [body, &body["data"], &body["result"]]
+        .into_iter()
+        .find_map(|node| {
+            ["events", "event", "eventList", "list"]
+                .into_iter()
+                .find_map(|key| node[key].as_array())
+                .or_else(|| node.as_array())
+                .map(|events| (node, events))
+        })
+        .ok_or_else(|| Failure {
+            category: "InvalidResponse".into(),
+            message: "Event search response is missing the event list".into(),
+        })?;
+    let next = offset.saturating_add(events.len() as i64);
+    let has_more = !events.is_empty()
+        && next > offset
+        && [container, body].into_iter().find_map(|node| {
+            node["hasMore"].as_bool().or_else(|| node["more"].as_bool())
+                .or_else(|| integer_value(&node["total"]).map(|total| next < total))
+        }).unwrap_or(events.len() >= req.limit as usize);
+    let items = events.iter()
+        .map(|entry| parse_event(entry.get("event").filter(|v| v.is_object()).unwrap_or(entry)))
+        .filter(|event| !event.id.is_empty())
+        .collect::<Vec<_>>();
+    let has_more = has_more && !items.is_empty();
+    Ok(EventPage {
+        items,
+        hasMore: Some(has_more),
+        cursor: has_more.then(|| next.to_string()),
+    })
+}
+
 pub async fn like_resource(
     client: &ApiClient,
     req: ResourceLikeRequest,
@@ -1082,6 +1163,12 @@ pub async fn like_resource(
 
     let mut q = Query::new();
     q.params.insert("id".to_string(), req.id.clone());
+    q.params.insert("type".to_string(), match req.r#type.as_str() {
+        "track" => "0",
+        "radio" => "4",
+        "digitalAlbum" => "7",
+        kind => require_type_code(kind)?,
+    }.to_string());
     q.params.insert("threadId".to_string(), thread_id);
     q.params.insert(
         "t".to_string(),
@@ -1099,7 +1186,7 @@ pub async fn like_resource(
 
 pub async fn delete_event(client: &ApiClient, req: IdRequest) -> Result<MutationResult, Failure> {
     let mut q = Query::new();
-    q.params.insert("evId".to_string(), req.id.clone());
+    q.params.insert("evId".to_string(), raw_event_id(&req.id).to_owned());
 
     let res = client.event_del(&q).await.map_err(ncm_err)?;
 
@@ -1115,7 +1202,7 @@ pub async fn forward_event(
     req: ForwardEventRequest,
 ) -> Result<MutationResult, Failure> {
     let mut q = Query::new();
-    q.params.insert("evId".to_string(), req.eventId);
+    q.params.insert("evId".to_string(), raw_event_id(&req.eventId).to_owned());
     q.params.insert("uid".to_string(), req.userId);
     q.params.insert("forwards".to_string(), req.text);
 
@@ -1138,7 +1225,8 @@ pub async fn share_resource(
         "music" | "song" => "song",
         "playlist" => "playlist",
         "mv" | "video" => "mv",
-        "dj" | "program" => "dj",
+        "dj" | "program" | "djprogram" => "djprogram",
+        "djradio" => "djradio",
         "album" => "album",
         "event" => "event",
         other => {
@@ -1149,18 +1237,38 @@ pub async fn share_resource(
         }
     };
 
-    let mut q = Query::new();
-    q.params
-        .insert("type".to_string(), upstream_type.to_string());
-    q.params.insert("msg".to_string(), req.text);
-    q.params.insert("id".to_string(), req.id.clone());
+    submit_event(client, upstream_type, req.id, req.text).await
+}
 
+pub async fn publish_event(
+    client: &ApiClient,
+    req: PublishEventRequest,
+) -> Result<MutationResult, Failure> {
+    let text = req.text.trim();
+    if text.is_empty() {
+        return Err(runtime("A text post requires non-blank text"));
+    }
+    submit_event(client, "noresource", String::new(), text.to_string()).await
+}
+
+async fn submit_event(
+    client: &ApiClient,
+    kind: &str,
+    id: String,
+    text: String,
+) -> Result<MutationResult, Failure> {
+    if text.chars().count() > 140 {
+        return Err(runtime("NetEase allows up to 140 characters per post"));
+    }
+    let mut q = Query::new();
+    q.params.insert("type".into(), kind.into());
+    q.params.insert("msg".into(), text);
+    q.params.insert("id".into(), id);
     let res = client.share_resource(&q).await.map_err(ncm_err)?;
 
-    let code = res.body["code"].as_i64().unwrap_or(0);
     Ok(MutationResult {
-        success: code == 200,
-        id: Some(req.id),
+        success: integer_value(&res.body["code"]) == Some(200),
+        id: event_id(&res.body["event"]).or_else(|| event_id(&res.body["data"]["event"])),
     })
 }
 

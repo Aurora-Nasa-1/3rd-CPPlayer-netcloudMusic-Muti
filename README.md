@@ -20,6 +20,8 @@ Java_cp_player_core_provider_netease_NeteaseJniSession_closeNative
 同时导出 `cp.player.sdk.netease.NeteaseJniSession` 与
 `cp.player.sdk.jni.NativeSession` 对应符号；后者是宿主当前的标准入口。
 
+新版宿主每个账号最多并行 8 个 SDK 调用。JNI 和 C ABI 会话共享一个 Tokio runtime（2 个工作线程）和 HTTP 连接池；连接池每个上游主机最多保留 2 条空闲连接，Cookie、设备状态和取消信号仍各自隔离。宿主销毁最后一个原生会话时，连接池和 Tokio runtime 一并释放。
+
 ### 1.1 C ABI（GraalVM Native Image 宿主）
 
 Windows 的 GraalVM Native Image 构建**不能**走 JNI：JNI 绑定挂在类对象上，宿主为了「每包独立绑定」
@@ -84,6 +86,14 @@ Java_cp_player_core_provider_JniProvider_analyzeAudioFile
 | macOS | `./build_module.sh macos` | `target/ncm-api-rs-macos.zip` |
 
 - Android 需要 `cargo install cargo-ndk` 与 NDK（`ANDROID_NDK_HOME`）。
+
+新版宿主可按运行时能力使用动态搜索（`social.events.search`）与纯文字发布
+（`social.events.publish`）。歌曲分享继续使用 `social.share`。动态 ID 是音源生成的
+不透明标识：它可能同时包含事件 ID 与评论线程 ID，宿主需要原样回传。
+
+JNI 和 C ABI 共享两条 Tokio 工作线程。HTTP 响应直接从字节解析 JSON，
+EAPI 加密响应直接解密二进制，不为中间的 Hex 和 UTF-8 文本额外分配整份缓冲。
+真机验证时，可用同一应用、同一账号和同一组请求前后对比 Android 的 PSS 与线程数。
 - Windows 建议用 PowerShell 脚本：Git Bash 的 `/usr/bin/link.exe` 会顶掉 MSVC 的
   `link.exe`，在 bash 里构建会报 `link: extra operand`。
 - 三端打包统一由 `scripts/package_module.py` 完成（零依赖，标准库），shell 只负责调 cargo。

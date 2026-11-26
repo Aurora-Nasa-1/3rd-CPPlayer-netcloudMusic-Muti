@@ -74,6 +74,7 @@ const handlerMap = {
   getRankings: "discovery::get_rankings",
   getTopSongs: "discovery::get_top_songs",
   getPersonalFm: "discovery::get_personal_fm",
+  getPersonalFmMode: "discovery::get_personal_fm_mode",
   getSimilarSongs: "discovery::get_similar_songs",
   getIntelligenceSongs: "discovery::get_intelligence_songs",
   getHotSearches: "discovery::get_hot_searches",
@@ -130,6 +131,8 @@ const handlerMap = {
   getCalendar: "social::get_calendar",
   getEvents: "social::get_events",
   getUserEvents: "social::get_user_events",
+  searchEvents: "social::search_events",
+  publishEvent: "social::publish_event",
   deleteEvent: "social::delete_event",
   forwardEvent: "social::forward_event",
   shareResource: "social::share_resource",
@@ -187,9 +190,13 @@ const handlerMap = {
   completeCloudUpload: "uploads::complete_cloud_upload"
 };
 
+// These contract operations are not implemented by this provider.
+const unsupported = ["resolveDrm", "exchangeLicense"];
+const unsupportedCapabilities = unsupported.map(name => schema.operations[name].capability);
+
 // Check completeness
 for (const [name, op] of Object.entries(schema.operations)) {
-  if (['capabilities', 'http', 'sha256', 'storageGet', 'storageSet'].includes(name)) continue;
+  if (['capabilities', 'http', 'sha256', 'storageGet', 'storageSet', ...unsupported].includes(name)) continue;
   if (!handlerMap[name]) {
     throw new Error(`Missing handler mapping for operation: ${name}`);
   }
@@ -232,6 +239,15 @@ impl NeteaseSdkProvider {
         _settings: Option<String>,
     ) -> Self {
         let client = ApiClient::new(credential.clone());
+        Self::with_client(provider_id, account_id, credential, client)
+    }
+
+    pub(crate) fn with_client(
+        provider_id: String,
+        account_id: String,
+        credential: Option<String>,
+        client: ApiClient,
+    ) -> Self {
         Self {
             client,
             provider_id,
@@ -281,7 +297,9 @@ impl NeteaseSdkProvider {
         match operation {
             tags::CAPABILITIES => {
                 let caps = Capabilities {
-                    supported: all_capabilities().into_iter().map(String::from).collect(),
+                    supported: all_capabilities().into_iter()
+                        .filter(|cap| ![${unsupportedCapabilities.map(cap => JSON.stringify(cap)).join(", ")}].contains(cap))
+                        .map(String::from).collect(),
                 };
                 let mut w = WireWriter::new();
                 caps.write(&mut w);

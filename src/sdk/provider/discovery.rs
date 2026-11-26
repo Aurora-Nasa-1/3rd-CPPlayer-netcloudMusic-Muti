@@ -223,32 +223,61 @@ pub async fn get_rankings(client: &ApiClient, _req: Bytes) -> Result<RankingPage
     Ok(RankingPage { items })
 }
 
-pub async fn get_top_songs(client: &ApiClient, req: TopSongsRequest) -> Result<TrackPage, Failure> {
-    let mut q = Query::new();
-    q.params.insert("type".to_string(), req.region.to_string());
-
-    let res = client.top_song(&q).await.map_err(|e| Failure {
-        category: "Network".to_string(),
-        message: e.to_string(),
-    })?;
-
-    let items = res.body["data"]
+fn top_songs_page(body: &serde_json::Value, limit: i32) -> TrackPage {
+    let mut items: Vec<Track> = body["data"]
         .as_array()
-        .map(|arr| arr.iter().map(parse_track).collect())
+        .or_else(|| body["result"].as_array())
+        .map(|arr| {
+            arr.iter()
+                .map(|entry| {
+                    parse_track(
+                        entry
+                            .get("song")
+                            .or_else(|| entry.get("songInfo"))
+                            .unwrap_or(entry),
+                    )
+                })
+                .filter(|track| !track.id.is_empty() && !track.title.trim().is_empty())
+                .collect()
+        })
         .unwrap_or_default();
+    items.truncate(limit.max(0) as usize);
 
-    Ok(TrackPage {
+    TrackPage {
         items,
         total: None,
         hasMore: None,
-    })
+    }
+}
+
+pub async fn get_top_songs(client: &ApiClient, req: TopSongsRequest) -> Result<TrackPage, Failure> {
+    if !matches!(req.region, 0 | 7 | 8 | 16 | 96) {
+        return Err(Failure {
+            category: "Unsupported".to_string(),
+            message: format!("Unsupported top songs region: {}", req.region),
+        });
+    }
+
+    let mut q = Query::new();
+    q.params.insert("type".to_string(), req.region.to_string());
+
+    let res = client.top_song(&q).await.map_err(ncm_err)?;
+
+    Ok(top_songs_page(&res.body, req.limit))
 }
 
 fn personal_fm_page(body: &serde_json::Value) -> TrackPage {
     let items = body["data"]
         .as_array()
+        .or_else(|| body["data"]["songs"].as_array())
+        .or_else(|| body["data"]["tracks"].as_array())
         .or_else(|| body["result"].as_array())
-        .map(|arr| arr.iter().map(parse_track).collect())
+        .map(|arr| {
+            arr.iter()
+                .map(|entry| parse_track(entry.get("song").unwrap_or(entry)))
+                .filter(|track| !track.id.is_empty())
+                .collect()
+        })
         .unwrap_or_default();
 
     TrackPage {
@@ -550,5 +579,70 @@ mod tests {
         }));
         assert_eq!(page.items.len(), 1);
         assert_eq!(page.items[0].id, "456");
+    }
+
+    #[test]
+    fn personal_fm_maps_nested_song_entries_without_emitting_placeholder_tracks() {
+        let page = personal_fm_page(&json!({
+            "data": { "songs": [
+                { "song": { "id": 789, "name": "Explore song" } },
+                { "type": "hint" }
+            ] }
+        }));
+        assert_eq!(page.items.len(), 1);
+        assert_eq!(page.items[0].id, "789");
+    }
+
+    #[test]
+    fn top_songs_respects_requested_limit_when_upstream_returns_more() {
+        let entries: Vec<serde_json::Value> = (1..=100)
+            .map(|id| {
+                json!({
+                    "id": id,
+                    "name": format!("New Song {id}"),
+                    "duration": 180000,
+                    "artists": [{ "id": 10, "name": "Artist" }],
+                    "album": { "name": "Album", "picUrl": "https://example.test/cover.jpg" }
+                })
+            })
+            .collect();
+        let page = top_songs_page(&json!({ "code": 200, "data": entries }), 20);
+        assert_eq!(page.items.len(), 20);
+        assert_eq!(page.items.first().unwrap().id, "1");
+        assert_eq!(page.items.last().unwrap().id, "20");
+        assert_eq!(page.total, None);
+        assert_eq!(page.hasMore, None);
+    }
+
+    #[test]
+    fn top_songs_handles_nested_song_info_and_skips_invalid_entries() {
+        let page = top_songs_page(
+            &json!({
+                "code": 200,
+                "data": [
+                    { "songInfo": { "id": 101, "name": "Nested song", "dt": 150000 } },
+                    { "id": 0, "name": "" },
+                    { "type": "hint" }
+                ]
+            }),
+            20,
+        );
+        assert_eq!(page.items.len(), 1);
+        assert_eq!(page.items[0].id, "101");
+        assert_eq!(page.items[0].title, "Nested song");
+    }
+
+    #[tokio::test]
+    async fn top_songs_rejects_unsupported_region() {
+        let err = get_top_songs(
+            &ApiClient::new(None),
+            TopSongsRequest {
+                limit: 20,
+                region: 999,
+            },
+        )
+        .await
+        .unwrap_err();
+        assert_eq!(err.category, "Unsupported");
     }
 }

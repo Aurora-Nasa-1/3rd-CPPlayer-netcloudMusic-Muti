@@ -297,6 +297,7 @@ mod msg_recentcontact;
 // ---- 动态 ----
 mod event;
 mod event_del;
+mod event_search;
 mod event_forward;
 
 // ---- 发送/分享 ----
@@ -548,6 +549,18 @@ impl Query {
             Some("false") | Some("0") => false,
             _ => default,
         }
+    }
+
+    pub(crate) fn comment_thread_id(&self, resource_type: &str) -> String {
+        if resource_type == "6" {
+            if let Some(thread) = self.get("threadId") {
+                return thread.to_string();
+            }
+        }
+        crate::util::config::RESOURCE_TYPE_MAP
+            .get(resource_type)
+            .map(|prefix| format!("{}{}", prefix, self.get_or("id", "0")))
+            .unwrap_or_default()
     }
 
     /// 构造 RequestOption
