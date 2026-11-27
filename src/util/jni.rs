@@ -25,7 +25,7 @@ pub(crate) fn get_runtime() -> &'static Runtime {
 pub(crate) fn build_runtime() -> Runtime {
     tokio::runtime::Builder::new_multi_thread()
         .enable_all()
-        .worker_threads(2)
+        .worker_threads(4)
         .thread_name("ncm-worker")
         .build()
         .expect("Failed to create Tokio runtime")

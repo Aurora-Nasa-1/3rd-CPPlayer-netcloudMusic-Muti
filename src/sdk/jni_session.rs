@@ -4,16 +4,18 @@
 use super::models::Failure;
 use super::provider::NeteaseSdkProvider;
 use super::wire::WireWriter;
-use crate::request::ApiClient;
+use crate::request::{ApiClient, XeapiKeyCache};
 use crate::util::jni::build_runtime;
 use jni::objects::{JByteArray, JClass, JString};
 use jni::sys::{jbyteArray, jint, jlong};
 use jni::JNIEnv;
+use std::collections::HashMap;
 use std::sync::{Arc, Mutex, Weak};
 use tokio::runtime::Runtime;
 
 struct NativeRuntime {
     transport: reqwest::Client,
+    xeapi_key_cache: XeapiKeyCache,
     runtime: Runtime,
 }
 
@@ -25,6 +27,7 @@ fn acquire_native_runtime() -> Arc<NativeRuntime> {
     shared.upgrade().unwrap_or_else(|| {
         let native = Arc::new(NativeRuntime {
             transport: ApiClient::native_transport(),
+            xeapi_key_cache: Arc::new(tokio::sync::Mutex::new(HashMap::new())),
             runtime: build_runtime(),
         });
         *shared = Arc::downgrade(&native);
@@ -45,7 +48,11 @@ pub(crate) fn create_session_handle(
     _settings: Option<String>,
 ) -> jlong {
     let native = acquire_native_runtime();
-    let client = ApiClient::with_transport(cred.clone(), native.transport.clone());
+    let client = ApiClient::with_shared_transport(
+        cred.clone(),
+        native.transport.clone(),
+        native.xeapi_key_cache.clone(),
+    );
     let provider = Arc::new(NeteaseSdkProvider::with_client(pid, aid, cred, client));
     let session = Box::new(NativeSessionHandle { provider, native });
     Box::into_raw(session) as jlong

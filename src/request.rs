@@ -98,6 +98,10 @@ pub struct ApiResponse {
     pub cookie: Vec<String>,
 }
 
+/// 跨会话共享的 XEAPI 动态公钥缓存（按 deviceId 索引）。
+pub(crate) type XeapiKeyCache =
+    Arc<tokio::sync::Mutex<HashMap<String, crypto::XeapiPublicKey>>>;
+
 /// API 客户端
 #[derive(Debug, Clone)]
 pub struct ApiClient {
@@ -106,8 +110,8 @@ pub struct ApiClient {
     anonymous_token: Option<String>,
     /// 自定义设备 ID，None 则使用全局默认值
     device_id: Option<String>,
-    /// XEAPI 公钥状态按设备缓存；客户端克隆时共享同一把动态公钥。
-    xeapi_key_state: Arc<tokio::sync::Mutex<Option<(String, crypto::XeapiPublicKey)>>>,
+    /// XEAPI 公钥状态按设备缓存；同上下文多通道克隆时共享同一份动态公钥映射。
+    xeapi_key_state: XeapiKeyCache,
 }
 
 impl ApiClient {
@@ -123,8 +127,9 @@ impl ApiClient {
     #[cfg(feature = "jni")]
     pub(crate) fn native_transport() -> reqwest::Client {
         Self::client_builder()
-            .pool_max_idle_per_host(2)
-            .pool_idle_timeout(std::time::Duration::from_secs(30))
+            .pool_max_idle_per_host(8)
+            .pool_idle_timeout(std::time::Duration::from_secs(90))
+            .tcp_keepalive(Some(std::time::Duration::from_secs(30)))
             .build()
             .expect("Failed to create native HTTP transport")
     }
@@ -137,12 +142,24 @@ impl ApiClient {
     }
 
     pub(crate) fn with_transport(cookie: Option<String>, client: reqwest::Client) -> Self {
+        Self::with_shared_transport(
+            cookie,
+            client,
+            Arc::new(tokio::sync::Mutex::new(HashMap::new())),
+        )
+    }
+
+    pub(crate) fn with_shared_transport(
+        cookie: Option<String>,
+        client: reqwest::Client,
+        xeapi_key_state: XeapiKeyCache,
+    ) -> Self {
         Self {
             client,
             cookie,
             anonymous_token: None,
             device_id: None,
-            xeapi_key_state: Arc::new(tokio::sync::Mutex::new(None)),
+            xeapi_key_state,
         }
     }
 
@@ -196,10 +213,9 @@ impl ApiClient {
     }
 
     async fn get_xeapi_public_key(&self, device_id: &str) -> Result<crypto::XeapiPublicKey> {
-        if let Some((cached_device_id, state)) = self.xeapi_key_state.lock().await.as_ref() {
-            if cached_device_id == device_id {
-                return Ok(state.clone());
-            }
+        let mut cache = self.xeapi_key_state.lock().await;
+        if let Some(state) = cache.get(device_id) {
+            return Ok(state.clone());
         }
 
         let nonce: String = {
@@ -294,7 +310,7 @@ impl ApiClient {
             })?;
         let state = crypto::xeapi_decrypt_public_key(encrypted_data)
             .map_err(|e| NcmError::Unknown(format!("XEAPI public key decryption failed: {e}")))?;
-        *self.xeapi_key_state.lock().await = Some((device_id.to_string(), state.clone()));
+        cache.insert(device_id.to_string(), state.clone());
         Ok(state)
     }
 

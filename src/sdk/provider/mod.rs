@@ -18,6 +18,7 @@ use crate::sdk::operations::{all_capabilities, tags};
 use crate::sdk::wire::{WireReader, WireWriter};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
+use tokio::sync::Notify;
 
 pub struct NeteaseSdkProvider {
     pub client: ApiClient,
@@ -25,6 +26,7 @@ pub struct NeteaseSdkProvider {
     pub account_id: String,
     pub credential: Option<String>,
     pub cancel_flag: Arc<AtomicBool>,
+    cancel_notify: Arc<Notify>,
 }
 
 impl NeteaseSdkProvider {
@@ -50,11 +52,13 @@ impl NeteaseSdkProvider {
             account_id,
             credential,
             cancel_flag: Arc::new(AtomicBool::new(false)),
+            cancel_notify: Arc::new(Notify::new()),
         }
     }
 
     pub fn cancel(&self) {
         self.cancel_flag.store(true, Ordering::SeqCst);
+        self.cancel_notify.notify_waiters();
     }
 
     pub fn is_cancelled(&self) -> bool {
@@ -70,12 +74,17 @@ impl NeteaseSdkProvider {
         self.cancel_flag.store(false, Ordering::SeqCst);
         let _reset = CancelReset(self.cancel_flag.clone());
         let flag = self.cancel_flag.clone();
+        let notify = self.cancel_notify.clone();
         tokio::select! {
             biased;
             result = self.run_op(operation, in_bytes) => result,
             _ = async move {
-                while !flag.load(Ordering::SeqCst) {
-                    tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+                loop {
+                    let notified = notify.notified();
+                    if flag.load(Ordering::SeqCst) {
+                        break;
+                    }
+                    notified.await;
                 }
             } => Err(Failure {
                 category: "Timeout".to_string(),

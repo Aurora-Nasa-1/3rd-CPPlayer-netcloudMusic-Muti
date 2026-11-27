@@ -8,18 +8,20 @@ impl ApiClient {
         let id = query.get_or("id", "0");
         let requested_level = query.get_or("level", "standard");
 
-        let levels = [
-            "sky", "jymaster", "vivid", "jyeffect", "hires", "lossless", "exhigh", "higher",
-            "standard",
-        ];
-        let start_index = levels
-            .iter()
-            .position(|&l| l == requested_level)
-            .unwrap_or(levels.len() - 1);
+        let fallback_levels: Vec<&str> = match requested_level.as_str() {
+            "standard" => vec!["standard"],
+            "higher" => vec!["higher", "standard"],
+            "exhigh" => vec!["exhigh", "standard"],
+            "lossless" => vec!["lossless", "exhigh", "standard"],
+            "sky" | "jymaster" | "vivid" | "jyeffect" | "hires" => {
+                vec![requested_level.as_str(), "lossless", "exhigh", "standard"]
+            }
+            _ => vec!["standard"],
+        };
 
         let mut final_response = None;
 
-        for &level in &levels[start_index..] {
+        for level in fallback_levels {
             let mut data = json!({
                 "ids": format!("[{}]", id),
                 "level": level,

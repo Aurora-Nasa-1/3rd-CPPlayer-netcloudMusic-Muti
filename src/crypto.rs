@@ -91,28 +91,35 @@ fn aes256_ecb_decrypt_bytes(ciphertext: &[u8], key: &[u8]) -> Result<Vec<u8>, St
         .map_err(|e| e.to_string())
 }
 
+/// 缓存解码后的静态 RSA 公钥模数与指数，避免每次 `weapi()` 重复解析 Base64 与 DER。
+static RSA_PUBLIC_KEY: std::sync::LazyLock<(BigUint, BigUint, usize)> =
+    std::sync::LazyLock::new(|| {
+        use base64::Engine;
+        use rsa::pkcs8::DecodePublicKey;
+
+        let der_bytes = base64::engine::general_purpose::STANDARD
+            .decode(PUBLIC_KEY_DER_B64)
+            .expect("Failed to decode RSA public key base64");
+
+        let public_key = RsaPublicKey::from_public_key_der(&der_bytes)
+            .expect("Failed to parse RSA public key DER");
+
+        let n = public_key.n().clone();
+        let e = public_key.e().clone();
+        let n_bytes = n.bits() / 8;
+        (n, e, n_bytes)
+    });
+
 /// RSA 加密（NONE / raw / textbook RSA，无 padding）
 /// 对应 Node.js: forge.publicKey.encrypt(str, 'NONE')
 fn rsa_encrypt_no_padding(plaintext: &[u8]) -> String {
-    use base64::Engine;
-    use rsa::pkcs8::DecodePublicKey;
-
-    let der_bytes = base64::engine::general_purpose::STANDARD
-        .decode(PUBLIC_KEY_DER_B64)
-        .expect("Failed to decode RSA public key base64");
-
-    let public_key =
-        RsaPublicKey::from_public_key_der(&der_bytes).expect("Failed to parse RSA public key DER");
-
-    let n = public_key.n().clone();
-    let e = public_key.e().clone();
+    let (n, e, n_bytes) = &*RSA_PUBLIC_KEY;
 
     // Textbook RSA: c = m^e mod n
     let m = BigUint::from_bytes_be(plaintext);
-    let c = m.modpow(&e, &n);
+    let c = m.modpow(e, n);
 
     // 输出固定长度 hex（与模数等长，256 hex chars for 1024-bit key）
-    let n_bytes = n.bits() / 8;
     let c_bytes = c.to_bytes_be();
 
     // 左侧填充 0
